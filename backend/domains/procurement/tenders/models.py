@@ -42,6 +42,14 @@ class Tender(IdMixin, TimestampMixin, Base):
     orgao_nome: Mapped[str] = mapped_column(String(255), nullable=False)
     unidade_nome: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # Adicionados na Fase 7 (correcao retroativa, ver FASE_7_REPORT): o filtro deterministico de
+    # regiao do Opportunity Engine precisa de UF comparavel; antes disso o dado existia apenas
+    # dentro de TenderVersion.raw_payload (JSONB), inutilizavel para filtro indexado. Nullable
+    # porque a fonte pode omitir (e porque as linhas ja ingeridas antes da migration podem nao
+    # ter o campo no payload).
+    uf: Mapped[str | None] = mapped_column(String(2), nullable=True, index=True)
+    municipio: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
     modalidade: Mapped[str] = mapped_column(String(60), nullable=False)
     objeto: Mapped[str] = mapped_column(Text, nullable=False)
     valor_estimado: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)

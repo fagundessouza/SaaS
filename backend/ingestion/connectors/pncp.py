@@ -351,6 +351,8 @@ def _parse_tender(item: dict[str, Any]) -> RawTender:
         orgao_cnpj=orgao.get("cnpj", ""),
         orgao_nome=orgao.get("razaoSocial", ""),
         unidade_nome=unidade.get("nomeUnidade"),
+        uf=unidade.get("ufSigla"),
+        municipio=unidade.get("municipioNome"),
         modalidade=item.get("modalidadeNome", ""),
         objeto=item.get("objetoCompra", ""),
         valor_estimado=_to_decimal(item.get("valorTotalEstimado")),

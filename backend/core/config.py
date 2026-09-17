@@ -41,6 +41,21 @@ class Settings(BaseSettings):
     embedding_model_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     qdrant_url: str = "http://localhost:6333"
 
+    # Opportunity Engine (Fase 7). Limiar de similaridade de cosseno acima do qual o objeto de um
+    # edital e considerado semanticamente compativel com um produto/servico declarado pelo tenant.
+    # NAO e um numero escolhido no abstrato: calibrado contra 100 objetos de edital reais do PNCP
+    # com dois perfis de empresa plausiveis, julgando manualmente cada resultado (ver
+    # FASE_7_REPORT, secao AMBIENTE, para a tabela completa). Em 0.55 a precisao medida foi 71%
+    # (perfil TI) e 86% (perfil hospitalar); baixar para 0.50 derruba a precisao de TI para 54%,
+    # subir para 0.65 leva a precisao a 100% mas o recall a ~29%. Fica como setting, nao
+    # constante, porque o limiar ideal varia por ramo (ver RISCOS do relatorio) e precisa ser
+    # revisado com dado de cliente piloto real.
+    opportunity_semantic_match_threshold: float = 0.55
+    # Janela de editais considerada a cada ciclo de matching. Sobreposicao generosa de proposito:
+    # criar Opportunity e idempotente por (tenant_id, tender_id), entao reavaliar e barato, e
+    # perder um edital por causa de um ciclo que falhou nao e.
+    opportunity_matching_lookback_hours: int = 72
+
 
 @lru_cache
 def get_settings() -> Settings:

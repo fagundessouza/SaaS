@@ -25,6 +25,8 @@ async def _create_tender() -> uuid.UUID:
         orgao_cnpj="00394460000141",
         orgao_nome="Prefeitura Exemplo",
         unidade_nome=None,
+        uf="RN",
+        municipio="Campo Grande",
         modalidade="Pregao Eletronico",
         objeto="Objeto de teste",
         valor_estimado=None,

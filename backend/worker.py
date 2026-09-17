@@ -15,16 +15,25 @@ import model_registry  # noqa: F401 — garante que todo model esteja registrado
 from core.config import get_settings
 from core.jobs.generic_jobs import dispatch_outbox_job, shutdown, startup
 from domains.procurement.companies.jobs import enrich_company_profile_job
+from domains.procurement.opportunities.jobs import run_opportunity_matching_job
 from ingestion.pipeline.jobs import run_pncp_ingestion_job
 
 
 class WorkerSettings:
-    functions = [enrich_company_profile_job, run_pncp_ingestion_job]
+    functions = [
+        enrich_company_profile_job,
+        run_pncp_ingestion_job,
+        run_opportunity_matching_job,
+    ]
     cron_jobs = [
         cron(dispatch_outbox_job, second={0, 10, 20, 30, 40, 50}),
         # A cada 30min: PNCP nao oferece webhook, so polling. Lookback de 48h em
         # ingestion/pipeline/jobs.py cobre gaps entre ciclos sem depender de precisao de minuto.
         cron(run_pncp_ingestion_job, minute={0, 30}),
+        # Defasado 15min da ingestao, para casar sobre editais ja ingeridos no ciclo anterior.
+        # Sem acoplamento direto entre os jobs de proposito (ver domains/procurement/
+        # opportunities/jobs.py): um ciclo de ingestao que falha nao impede o matching de rodar.
+        cron(run_opportunity_matching_job, minute={15, 45}),
     ]
     on_startup = startup
     on_shutdown = shutdown

@@ -68,6 +68,8 @@ async def ingest_raw_tender(raw: RawTender) -> IngestResult:
                 orgao_cnpj=raw.orgao_cnpj,
                 orgao_nome=raw.orgao_nome,
                 unidade_nome=raw.unidade_nome,
+                uf=raw.uf,
+                municipio=raw.municipio,
                 modalidade=raw.modalidade,
                 objeto=raw.objeto,
                 valor_estimado=raw.valor_estimado,
@@ -124,6 +126,11 @@ async def ingest_raw_tender(raw: RawTender) -> IngestResult:
         tender.data_abertura_proposta = raw.data_abertura_proposta
         tender.data_encerramento_proposta = raw.data_encerramento_proposta
         tender.situacao = raw.situacao
+        # uf/municipio tambem sao atualizados na retificacao: um Tender ingerido antes da Fase 7
+        # tem esses campos nulos e so os ganha quando uma nova versao chega (ou pelo backfill da
+        # migration e7e8db6a1bec).
+        tender.uf = raw.uf
+        tender.municipio = raw.municipio
 
         await publish_event(
             session,

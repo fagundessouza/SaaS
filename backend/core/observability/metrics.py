@@ -115,3 +115,16 @@ requirements_extracted_total = Counter(
     "Total de Requirement extraidos do texto de edital, por categoria classificada (Fase 6)",
     ["category"],
 )
+
+opportunities_created_total = Counter(
+    "opportunities_created_total",
+    "Total de Opportunity criadas pelo Opportunity Engine (Fase 7)",
+)
+
+opportunity_match_evaluations_total = Counter(
+    "opportunity_match_evaluations_total",
+    "Total de avaliacoes de match (Tender x tenant) por desfecho — a razao rejected/matched e o "
+    "sinal de que o funil deterministico esta barrando volume antes do custo de IA (ver "
+    "docs/00-CRITICAL_ANALYSIS.md, risco 5)",
+    ["outcome"],
+)

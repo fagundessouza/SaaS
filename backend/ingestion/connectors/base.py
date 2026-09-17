@@ -40,6 +40,10 @@ class RawTender:
     orgao_cnpj: str
     orgao_nome: str
     unidade_nome: str | None
+    # UF/municipio do orgao comprador — necessarios para o filtro deterministico de regiao do
+    # Opportunity Engine (Fase 7). Vem de `unidadeOrgao.ufSigla`/`municipioNome` no PNCP.
+    uf: str | None
+    municipio: str | None
     modalidade: str
     objeto: str
     valor_estimado: Decimal | None
