@@ -30,6 +30,11 @@ jobs:
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s --health-timeout 5s --health-retries 10
+      qdrant:
+        # Ao contrario do MinIO, a imagem oficial do Qdrant roda com CMD default sem argumentos
+        # customizados — funciona normalmente como `services:` (ver Fase 5).
+        image: qdrant/qdrant:latest
+        ports: ["6333:6333"]
       # MinIO NAO entra aqui como `services:` de proposito: a imagem oficial minio/minio exige
       # `server /data` como argumento de CMD, e o campo `services:` do GitHub Actions nao aceita
       # customizar o comando (so image/env/ports/options). `bitnami/minio` (que aceitava so
@@ -45,6 +50,7 @@ jobs:
       STORAGE_ACCESS_KEY: licitacoes
       STORAGE_SECRET_KEY: licitacoes123
       STORAGE_BUCKET: licitacoes-dev
+      QDRANT_URL: http://localhost:6333
       LOG_LEVEL: INFO
       ENVIRONMENT: ci
       # Nunca usar fora de CI — ver core/config.py e .env.example para o padrao de dev local.
@@ -58,6 +64,16 @@ jobs:
 
       - name: Instalar dependencias
         run: uv sync
+
+      - name: Aguardar Qdrant
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:6333/ >/dev/null; then
+              echo "Qdrant pronto"; exit 0
+            fi
+            sleep 2
+          done
+          echo "Qdrant nao respondeu a tempo"; exit 1
 
       - name: Iniciar MinIO
         run: |

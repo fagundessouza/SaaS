@@ -57,6 +57,21 @@ class ProcessingResult:
     reused_cache: bool
 
 
+@dataclass(frozen=True)
+class _ExtractionResult:
+    method: ExtractionMethod
+    quality: ExtractionQuality
+    ocr_required: bool
+    ocr_confidence: float | None
+    page_count: int
+    page_texts: list[str]
+    diagnostics: dict[str, Any]
+
+    @property
+    def text(self) -> str:
+        return "\n\n".join(self.page_texts)
+
+
 def _classify_native(avg_chars_per_page: float) -> ExtractionQuality:
     if avg_chars_per_page >= 300:
         return ExtractionQuality.HIGH
@@ -113,10 +128,9 @@ async def get_or_process_document(content: bytes) -> ProcessingResult:
         next_version_number = document.latest_version_number + 1
 
     started_at = time.monotonic()
-    method, quality, ocr_required, ocr_confidence, page_count, text, diagnostics = _extract(
-        content
-    )
+    extraction = _extract(content)
     duration = time.monotonic() - started_at
+    method, quality = extraction.method, extraction.quality
 
     is_low_confidence = quality in (ExtractionQuality.LOW, ExtractionQuality.UNUSABLE)
     if method == ExtractionMethod.NATIVE:
@@ -136,14 +150,15 @@ async def get_or_process_document(content: bytes) -> ProcessingResult:
             processing_version=PROCESSING_VERSION,
             extraction_method=method,
             extraction_quality=quality,
-            ocr_required=ocr_required,
-            ocr_confidence=ocr_confidence,
+            ocr_required=extraction.ocr_required,
+            ocr_confidence=extraction.ocr_confidence,
             layout_quality=layout_quality,
             table_quality=TableQuality.NOT_APPLICABLE,
             low_extraction_confidence=is_low_confidence,
-            page_count=page_count,
-            extracted_text=text,
-            diagnostics=diagnostics,
+            page_count=extraction.page_count,
+            extracted_text=extraction.text,
+            page_texts=extraction.page_texts,
+            diagnostics=extraction.diagnostics,
         )
         session.add(version)
         document.latest_version_number = next_version_number
@@ -168,58 +183,55 @@ async def get_or_process_document(content: bytes) -> ProcessingResult:
     )
 
 
-def _extract(
-    content: bytes,
-) -> tuple[ExtractionMethod, ExtractionQuality, bool, float | None, int, str, dict[str, Any]]:
+def _extract(content: bytes) -> _ExtractionResult:
     try:
         native = assess_native_quality(content)
     except UnreadablePdfError as exc:
-        return (
-            ExtractionMethod.NATIVE,
-            ExtractionQuality.UNUSABLE,
-            False,
-            None,
-            0,
-            "",
-            {"error": str(exc)},
+        return _ExtractionResult(
+            method=ExtractionMethod.NATIVE,
+            quality=ExtractionQuality.UNUSABLE,
+            ocr_required=False,
+            ocr_confidence=None,
+            page_count=0,
+            page_texts=[],
+            diagnostics={"error": str(exc)},
         )
 
     if native.native_text_sufficient:
-        text = "\n\n".join(native.text_by_page)
         quality = _classify_native(native.avg_chars_per_page)
-        return (
-            ExtractionMethod.NATIVE,
-            quality,
-            False,
-            None,
-            native.page_count,
-            text,
-            {"avg_chars_per_page": native.avg_chars_per_page},
+        return _ExtractionResult(
+            method=ExtractionMethod.NATIVE,
+            quality=quality,
+            ocr_required=False,
+            ocr_confidence=None,
+            page_count=native.page_count,
+            page_texts=native.text_by_page,
+            diagnostics={"avg_chars_per_page": native.avg_chars_per_page},
         )
 
     try:
         ocr_result = ocr_pdf(content)
     except OcrUnavailableError as exc:
         logger.error("document.ocr_unavailable", error=str(exc))
-        return (
-            ExtractionMethod.OCR,
-            ExtractionQuality.UNUSABLE,
-            True,
-            None,
-            native.page_count,
-            "",
-            {"avg_chars_per_page": native.avg_chars_per_page, "ocr_error": str(exc)},
+        return _ExtractionResult(
+            method=ExtractionMethod.OCR,
+            quality=ExtractionQuality.UNUSABLE,
+            ocr_required=True,
+            ocr_confidence=None,
+            page_count=native.page_count,
+            page_texts=[],
+            diagnostics={"avg_chars_per_page": native.avg_chars_per_page, "ocr_error": str(exc)},
         )
 
     quality = _classify_ocr(ocr_result.text, ocr_result.mean_confidence)
-    return (
-        ExtractionMethod.OCR,
-        quality,
-        True,
-        ocr_result.mean_confidence,
-        len(ocr_result.pages),
-        ocr_result.text,
-        {
+    return _ExtractionResult(
+        method=ExtractionMethod.OCR,
+        quality=quality,
+        ocr_required=True,
+        ocr_confidence=ocr_result.mean_confidence,
+        page_count=len(ocr_result.pages),
+        page_texts=[page.text for page in ocr_result.pages],
+        diagnostics={
             "avg_chars_per_page": native.avg_chars_per_page,
             "ocr_mean_confidence": ocr_result.mean_confidence,
         },

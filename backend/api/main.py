@@ -15,7 +15,7 @@ from fastapi import FastAPI, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 import model_registry  # noqa: F401 — registra todo model em Base.metadata
-from api.v1 import auth, companies, health, jobs, tenants, users
+from api.v1 import auth, companies, health, jobs, knowledge, tenants, users
 from core.observability.logging import configure_logging, get_logger
 from core.observability.metrics import http_request_duration_seconds, http_requests_total
 from core.storage.client import get_storage_client
@@ -69,3 +69,4 @@ app.include_router(users.router)
 app.include_router(tenants.router)
 app.include_router(companies.router)
 app.include_router(jobs.router)
+app.include_router(knowledge.router)

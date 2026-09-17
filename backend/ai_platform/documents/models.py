@@ -95,4 +95,9 @@ class DocumentVersion(IdMixin, TimestampMixin, Base):
 
     page_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     extracted_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # Adicionado na Fase 5: chunking estrutural precisa saber em que pagina cada trecho cai
+    # (ver ai_platform/chunking/) para poder citar page_start/page_end — `extracted_text` sozinho
+    # (Fase 4) so guardava o texto ja concatenado entre paginas. Correcao aditiva via migration,
+    # nao uma mudanca de decisao anterior (ver docs/phase-reports/FASE_5_REPORT.md).
+    page_texts: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     diagnostics: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)

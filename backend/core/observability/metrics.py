@@ -83,3 +83,23 @@ document_processing_duration_seconds = Histogram(
     "Duracao do processamento de um documento (extracao nativa ou OCR)",
     ["method"],
 )
+
+knowledge_chunks_indexed_total = Counter(
+    "knowledge_chunks_indexed_total",
+    "Total de chunks indexados no Global Knowledge Layer (Qdrant)",
+)
+
+knowledge_indexing_cache_hits_total = Counter(
+    "knowledge_indexing_cache_hits_total",
+    "Total de DocumentVersion cuja indexacao foi reaproveitada (ja indexada antes)",
+)
+
+knowledge_indexing_duration_seconds = Histogram(
+    "knowledge_indexing_duration_seconds",
+    "Duracao de chunking + embedding + upsert de uma DocumentVersion",
+)
+
+knowledge_search_duration_seconds = Histogram(
+    "knowledge_search_duration_seconds",
+    "Duracao de uma busca semantica no Global Knowledge Layer",
+)

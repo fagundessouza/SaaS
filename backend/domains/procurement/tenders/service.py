@@ -16,6 +16,7 @@ from typing import Any
 from sqlalchemy import select
 
 from ai_platform.documents.service import get_or_process_document
+from ai_platform.retrieval.indexer import index_document_version
 from core.db.session import system_session
 from core.events.publisher import publish_event
 from core.observability.logging import get_logger
@@ -225,3 +226,16 @@ async def store_tender_documents(
             assert doc_record is not None
             doc_record.document_id = processing.document_id
             doc_record.processing_error = None
+
+        # Indexacao (chunking + embedding + Qdrant) tambem roda fora da transacao e tambem nunca
+        # derruba a ingestao — um documento processado mas nao indexado ainda e um resultado
+        # valido (fica so sem busca semantica ate uma reindexacao), nao uma falha de ingestao.
+        try:
+            await index_document_version(processing.document_version_id)
+        except Exception as exc:  # noqa: BLE001 — falha de indexacao nao e falha de ingestao
+            logger.error(
+                "tender_document.indexing_failed",
+                tender_id=str(tender_id),
+                external_document_id=doc.external_document_id,
+                error=str(exc),
+            )

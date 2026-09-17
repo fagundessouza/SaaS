@@ -19,10 +19,15 @@ via Tesseract quando a camada de texto é insuficiente, e o Global Processing Ca
 (`Document`/`DocumentVersion` por `content_hash`, ver [ADR-0012](../docs/adr/0012-document-processing-cache.md)).
 Todo `TenderDocument` baixado é processado automaticamente.
 
+Fase 5 (Knowledge / RAG — Global Layer) adicionou `ai_platform/chunking`, `ai_platform/embeddings`
+e `ai_platform/retrieval`: chunking estrutural do texto já extraído (Fase 4), embeddings locais
+(fastembed, sem GPU) e indexação/busca semântica no Qdrant. Todo `DocumentVersion` processado com
+sucesso é automaticamente indexado.
+
 ## Subindo o ambiente local
 
 ```bash
-# 1. Infraestrutura (Postgres, Redis, MinIO)
+# 1. Infraestrutura (Postgres, Redis, MinIO, Qdrant)
 cd ops/docker
 docker compose up -d
 
@@ -141,6 +146,21 @@ flag — isso é Fase 8 — mas o dado já nasce correto). Documentos com o mesm
 (mesmo PDF, tenders diferentes) são processados uma única vez (Global Processing Cache, ver
 [ADR-0012](../docs/adr/0012-document-processing-cache.md)).
 
+## Knowledge / RAG (busca semântica)
+
+```bash
+curl -s "localhost:8000/v1/knowledge/search?q=multa+por+descumprimento+do+contrato" \
+  -H "Authorization: Bearer <ACCESS_TOKEN>"
+```
+
+Cada `DocumentVersion` processada com sucesso (Fase 4) é automaticamente segmentada em chunks
+estruturais (uma seção de edital = um chunk, respeitando o vocabulário típico: objeto, condições
+de participação, habilitação, sanções etc. — ver `ai_platform/chunking/chunker.py`), embutida
+(modelo multilíngue local via `fastembed`, sem GPU) e indexada no Qdrant
+(`global_knowledge`, GLOBAL — sem tenant, edital publicado é informação pública). A busca nunca
+faz reranking (isso é Analysis, Fase 8 — ver ADR-0007) e sempre devolve a citação (seção,
+página) junto com o trecho, nunca só o texto solto.
+
 ## Comandos de verificação (checkpoint de fase, ver docs/DEVELOPMENT.md)
 
 ```bash
@@ -175,14 +195,16 @@ Existe: `core/tenancy`, `core/events` (outbox), `core/jobs` (fila Arq), `core/st
 `core/permissions` (RBAC), `core/billing` (Plan/Subscription, sem gateway de pagamento),
 `domains/procurement/companies` (CompanyProfile + enriquecimento por CNPJ),
 `domains/procurement/tenders` (Tender/TenderVersion/TenderDocument), `ingestion/` (conector PNCP
-+ pipeline) e `ai_platform/documents` (Document/DocumentVersion, extração nativa + OCR). RLS
-aplicado e testado em toda tabela `TENANT` (`job_runs`, `users`, `subscriptions`,
-`company_profiles`) — `tenders`/`tender_versions`/`tender_documents`/`documents`/
-`document_versions` são GLOBAL, sem RLS.
++ pipeline), `ai_platform/documents` (Document/DocumentVersion, extração nativa + OCR) e
+`ai_platform/chunking`/`embeddings`/`retrieval` (chunking estrutural, embeddings locais, busca
+semântica no Qdrant). RLS aplicado e testado em toda tabela `TENANT` (`job_runs`, `users`,
+`subscriptions`, `company_profiles`) — `tenders`/`tender_versions`/`tender_documents`/`documents`/
+`document_versions` são GLOBAL, sem RLS; chunks vivem só no Qdrant (não duplicados em Postgres).
 
 Não existe ainda: `Requirement`/`TenderItem` extraídos estruturalmente do texto processado,
 `opportunities`/`analysis` (Fase 6/7/8 — nada ainda consome `low_extraction_confidence` para
-bloquear conclusão de alto risco, porque não há conclusão nenhuma sendo gerada ainda), chunking/
-embeddings/retrieval (`ai_platform/chunking`, `.../embeddings` — Fase 5), frontend, envio de
-e-mail de convite/verificação (fica para o Notification Engine, Fase 10 — hoje o owner/admin já
-cria o usuário com senha definida, sem fluxo de confirmação por e-mail).
+bloquear conclusão de alto risco, porque não há conclusão nenhuma sendo gerada ainda), reranking
+(deliberadamente fora do escopo do retrieval básico, ver ADR-0007 — só entra em Analysis, Fase 8),
+`ai_platform/llm`/`agents` (Fase 9, Assistente), frontend, envio de e-mail de convite/verificação
+(fica para o Notification Engine, Fase 10 — hoje o owner/admin já cria o usuário com senha
+definida, sem fluxo de confirmação por e-mail).

@@ -1,10 +1,15 @@
 """Fixtures compartilhadas.
 
 `pytest-asyncio` (modo auto) cria um event loop por funcao de teste por padrao. Os singletons de
-engine/conexao em core.db.session, core.cache.redis_client e core.jobs.enqueue sao criados de
-forma preguicosa e ficam presos ao event loop em que nasceram — reusa-los sob um loop novo
-gera `RuntimeError: Event loop is closed`. Este fixture derruba os singletons apos cada teste
-para que o proximo teste os recrie contra o loop corrente.
+engine/conexao em core.db.session, core.cache.redis_client, core.jobs.enqueue e
+ai_platform.retrieval.client sao criados de forma preguicosa e ficam presos ao event loop em que
+nasceram — reusa-los sob um loop novo gera `RuntimeError: Event loop is closed`. Este fixture
+derruba esses singletons apos cada teste para que o proximo teste os recrie contra o loop
+corrente.
+
+`ai_platform.embeddings.fastembed_provider._provider` e a UNICA excecao deliberada — o modelo
+ONNX nao faz I/O assincrono (so `asyncio.to_thread` em cima de computo sincrono), entao nao fica
+preso a nenhum event loop, e recarrega-lo a cada teste custaria ~15s por teste sem necessidade.
 """
 
 from __future__ import annotations
@@ -15,6 +20,7 @@ from collections.abc import AsyncGenerator
 import pytest
 import pytest_asyncio
 
+from ai_platform.retrieval import client as qdrant_client_module
 from core.cache import redis_client as redis_client_module
 from core.db import session as db_session_module
 from core.jobs import enqueue as enqueue_module
@@ -72,3 +78,7 @@ async def _reset_async_singletons() -> AsyncGenerator[None, None]:
     if enqueue_module._pool is not None:
         await enqueue_module._pool.aclose()
     enqueue_module._pool = None
+
+    if qdrant_client_module._client is not None:
+        await qdrant_client_module._client.close()
+    qdrant_client_module._client = None
