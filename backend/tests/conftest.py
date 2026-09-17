@@ -12,11 +12,13 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncGenerator
 
+import pytest
 import pytest_asyncio
 
 from core.cache import redis_client as redis_client_module
 from core.db import session as db_session_module
 from core.jobs import enqueue as enqueue_module
+from core.storage.client import get_storage_client
 
 
 def unique_email(prefix: str = "user") -> str:
@@ -32,6 +34,26 @@ def unique_cnpj() -> str:
     com digito verificador valido, so nao pode colidir."""
     digits = uuid.uuid4().int
     return "".join(str((digits >> (i * 4)) % 10) for i in range(14))
+
+
+def unique_text(base: str) -> str:
+    """Texto garantidamente unico entre chamadas — necessario para testes de
+    ai_platform.documents (Document.content_hash e unico globalmente, ver ADR-0012). Gerar a
+    partir de uma funcao chamada dentro de cada teste, nunca de uma constante de modulo
+    compartilhada entre testes: dois testes que precisam de identidade de Document independente
+    mas usam o mesmo texto fixo colidem no mesmo content_hash, mesmo dentro de uma unica
+    execucao do pytest (sem rollback entre testes — ver _reset_async_singletons)."""
+    return f"{base} [{uuid.uuid4().hex[:8]}]"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _ensure_storage_bucket() -> None:
+    """Sem isto, testes que tocam storage (ex.: tests/integration/test_tender_ingestion.py)
+    so passavam localmente porque uma API rodada manualmente antes ja tinha criado o bucket
+    (ensure_bucket roda no lifespan de api/main.py, que os testes via ASGITransport nunca
+    disparam). Garantido aqui uma vez por sessao de teste, independente de qualquer processo
+    externo ter rodado antes."""
+    get_storage_client().ensure_bucket()
 
 
 @pytest_asyncio.fixture(autouse=True)

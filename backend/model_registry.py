@@ -10,9 +10,11 @@ ORM (Alembic, o worker Arq). A API tambem importa isto por seguranca/consistenci
 seus routers ja importem os modelos que usam diretamente.
 """
 
+from ai_platform.documents import models as _document_models  # noqa: F401
 from core.auth import models as _auth_models  # noqa: F401
 from core.billing import models as _billing_models  # noqa: F401
 from core.events import models as _events_models  # noqa: F401
 from core.jobs import models as _jobs_models  # noqa: F401
 from core.tenancy import models as _tenancy_models  # noqa: F401
 from domains.procurement.companies import models as _company_models  # noqa: F401
+from domains.procurement.tenders import models as _tender_models  # noqa: F401

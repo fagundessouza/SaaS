@@ -34,3 +34,52 @@ outbox_events_dispatched_total = Counter(
     "outbox_events_dispatched_total",
     "Total de eventos de dominio despachados do outbox para o event bus",
 )
+
+ingestion_items_fetched_total = Counter(
+    "ingestion_items_fetched_total",
+    "Total de itens (editais) buscados com sucesso de uma fonte de ingestao",
+    ["source"],
+)
+
+ingestion_errors_total = Counter(
+    "ingestion_errors_total",
+    "Total de falhas de fetch/parse durante a ingestao — usado para detectar fonte degradada "
+    "(ver docs/00-CRITICAL_ANALYSIS.md, risco 4: falha silenciosa de ingestao)",
+    ["source"],
+)
+
+tenders_created_total = Counter(
+    "tenders_created_total",
+    "Total de Tender novos criados a partir da ingestao",
+    ["source"],
+)
+
+tenders_updated_total = Counter(
+    "tenders_updated_total",
+    "Total de TenderVersion novas criadas para Tender ja existentes (retificacao)",
+    ["source"],
+)
+
+tender_documents_stored_total = Counter(
+    "tender_documents_stored_total",
+    "Total de documentos de edital baixados e armazenados",
+    ["source", "status"],
+)
+
+document_processing_total = Counter(
+    "document_processing_total",
+    "Total de documentos processados pelo Document Intelligence, por metodo e qualidade "
+    "resultante (ver ai_platform/documents/service.py)",
+    ["method", "quality"],
+)
+
+document_processing_cache_hits_total = Counter(
+    "document_processing_cache_hits_total",
+    "Total de documentos reaproveitados do Global Processing Cache (ADR-0005) sem reprocessar",
+)
+
+document_processing_duration_seconds = Histogram(
+    "document_processing_duration_seconds",
+    "Duracao do processamento de um documento (extracao nativa ou OCR)",
+    ["method"],
+)

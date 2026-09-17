@@ -30,21 +30,25 @@ jobs:
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s --health-timeout 5s --health-retries 10
+      # MinIO NAO entra aqui como `services:` de proposito: a imagem oficial minio/minio exige
+      # `server /data` como argumento de CMD, e o campo `services:` do GitHub Actions nao aceita
+      # customizar o comando (so image/env/ports/options). `bitnami/minio` (que aceitava so
+      # variavel de ambiente) parou de publicar a tag `:latest` publicamente — ver step "Iniciar
+      # MinIO" abaixo, que sobe a mesma imagem oficial de ops/docker/docker-compose.yml via
+      # `docker run` direto, com o comando explicito que `services:` nao permite.
 
     env:
       DATABASE_URL: postgresql+asyncpg://app_runtime:app_runtime_dev_password@localhost:5432/licitacoes
       MIGRATIONS_DATABASE_URL: postgresql+asyncpg://licitacoes:licitacoes@localhost:5432/licitacoes
       REDIS_URL: redis://localhost:6379/0
-      # MinIO nao roda neste pipeline ainda (services: do GitHub Actions nao aceita facilmente o
-      # CMD customizado que a imagem do MinIO exige) — nenhum teste automatizado hoje depende de
-      # storage real; isso e uma lacuna conhecida, nao uma omissao silenciosa. Ver
-      # docs/IMPLEMENTATION_ROADMAP.md quando um teste de storage for adicionado.
       STORAGE_ENDPOINT_URL: http://localhost:9000
       STORAGE_ACCESS_KEY: licitacoes
       STORAGE_SECRET_KEY: licitacoes123
       STORAGE_BUCKET: licitacoes-dev
       LOG_LEVEL: INFO
       ENVIRONMENT: ci
+      # Nunca usar fora de CI — ver core/config.py e .env.example para o padrao de dev local.
+      JWT_SECRET_KEY: ci-only-secret-never-use-in-production-1a2b3c4d5e6f
 
     steps:
       - uses: actions/checkout@v4
@@ -55,11 +59,29 @@ jobs:
       - name: Instalar dependencias
         run: uv sync
 
+      - name: Iniciar MinIO
+        run: |
+          docker run -d --name minio \
+            -p 9000:9000 -p 9001:9001 \
+            -e MINIO_ROOT_USER=licitacoes \
+            -e MINIO_ROOT_PASSWORD=licitacoes123 \
+            quay.io/minio/minio:latest server /data --console-address ":9001"
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:9000/minio/health/live >/dev/null; then
+              echo "MinIO pronto"; exit 0
+            fi
+            sleep 2
+          done
+          echo "MinIO nao respondeu a tempo"; docker logs minio; exit 1
+
       - name: Criar papel de runtime sem privilegio de superusuario (ver ADR-0002)
         run: |
           sudo apt-get update && sudo apt-get install -y postgresql-client
           PGPASSWORD=licitacoes psql -h localhost -U licitacoes -d licitacoes \
             -f ../ops/docker/initdb/01-app-role.sql
+
+      - name: Instalar Tesseract OCR (Fase 4 — Document Intelligence)
+        run: sudo apt-get install -y tesseract-ocr tesseract-ocr-por
 
       - name: Lint (ruff)
         run: uv run ruff check .

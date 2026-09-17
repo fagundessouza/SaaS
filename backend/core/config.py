@@ -25,6 +25,14 @@ class Settings(BaseSettings):
 
     cnpj_lookup_base_url: str = "https://brasilapi.com.br/api/cnpj/v1"
 
+    # Document Intelligence (Fase 4). `tesseract_cmd` so precisa ser setado quando o binario nao
+    # esta no PATH (ex.: Windows sem instalar via um metodo que registre o PATH). `tessdata_dir`
+    # aponta para o diretorio com os arquivos .traineddata (ver backend/README.md — nao
+    # versionado, cada ambiente baixa o proprio).
+    tesseract_cmd: str = "tesseract"
+    tessdata_dir: str | None = None
+    ocr_language: str = "por"
+
 
 @lru_cache
 def get_settings() -> Settings:
