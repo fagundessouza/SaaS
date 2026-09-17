@@ -16,12 +16,14 @@ from domains.procurement.tenders.models import Tender
 from ingestion.pipeline.jobs import run_pncp_ingestion_job
 
 PNCP_BASE = "https://pncp.gov.br/api/consulta/v1"
+PNCP_ITEMS_BASE = "https://pncp.gov.br/api/pncp/v1"
 
 
-def _mock_no_documents() -> None:
-    """Toda Tender CREATED/UPDATED aciona fetch_documents (ver ingestion/pipeline/jobs.py) —
-    sem isto, respx recusa a chamada nao mockada."""
-    respx.get(url__regex=rf"{PNCP_BASE}/orgaos/.+/arquivos").mock(
+def _mock_no_documents_or_items() -> None:
+    """Toda Tender CREATED/UPDATED aciona fetch_documents e fetch_items (ver
+    ingestion/pipeline/jobs.py) — sem isto, respx recusa a chamada nao mockada."""
+    respx.get(url__regex=rf"{PNCP_BASE}/orgaos/.+/arquivos").mock(return_value=httpx.Response(404))
+    respx.get(url__regex=rf"{PNCP_ITEMS_BASE}/orgaos/.+/itens").mock(
         return_value=httpx.Response(404)
     )
 
@@ -49,7 +51,7 @@ async def test_run_pncp_ingestion_job_creates_tenders_and_returns_counts() -> No
 
     page_with_data = {"data": [_item(numero_a), _item(numero_b)], "totalPaginas": 1}
     empty_page = {"data": [], "totalPaginas": 1}
-    _mock_no_documents()
+    _mock_no_documents_or_items()
 
     route = respx.get(f"{PNCP_BASE}/contratacoes/publicacao")
     # 3 modalidades default (6, 4, 8): a primeira retorna 2 itens, as outras vazias.
@@ -78,7 +80,7 @@ async def test_run_pncp_ingestion_job_is_idempotent_on_rerun() -> None:
     numero = f"job-idem-{uuid.uuid4()}"
     page = {"data": [_item(numero)], "totalPaginas": 1}
     empty_page = {"data": [], "totalPaginas": 1}
-    _mock_no_documents()
+    _mock_no_documents_or_items()
 
     route = respx.get(f"{PNCP_BASE}/contratacoes/publicacao")
     route.side_effect = [

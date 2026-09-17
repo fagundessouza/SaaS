@@ -103,3 +103,15 @@ knowledge_search_duration_seconds = Histogram(
     "knowledge_search_duration_seconds",
     "Duracao de uma busca semantica no Global Knowledge Layer",
 )
+
+tender_items_stored_total = Counter(
+    "tender_items_stored_total",
+    "Total de TenderItem criados/atualizados a partir da ingestao (Fase 6)",
+    ["source"],
+)
+
+requirements_extracted_total = Counter(
+    "requirements_extracted_total",
+    "Total de Requirement extraidos do texto de edital, por categoria classificada (Fase 6)",
+    ["category"],
+)

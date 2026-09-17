@@ -21,6 +21,17 @@ ao vivo:
 
 A instabilidade observada e a razao concreta (nao hipotetica) para o retry com backoff
 implementado em `_request_with_retry`.
+
+NOTA DE VERIFICACAO (Fase 6, `fetch_items`): o sub-recurso de itens NAO vive sob
+`/api/consulta/v1` (`PNCP_BASE_URL`) como `/arquivos` — `/api/consulta/v1/orgaos/{cnpj}/compras/
+{ano}/{sequencial}/itens` responde 404. O path confirmado ao vivo (compra real
+`08084014000142/2024/57`, Municipio de Campo Grande/RN, 5 itens retornados com campos
+`numeroItem`, `descricao`, `materialOuServicoNome`, `quantidade`, `unidadeMedida`,
+`valorUnitarioEstimado`, `valorTotal`) e sob uma base diferente:
+`https://pncp.gov.br/api/pncp/v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/itens`
+(`PNCP_ITEMS_BASE_URL` abaixo). Documentado explicitamente porque a inconsistencia de base URL
+entre sub-recursos do mesmo `numeroControlePNCP` nao esta descrita no Manual de Integracao —
+achada por tentativa direta contra a API real, nao por documentacao.
 """
 
 from __future__ import annotations
@@ -35,11 +46,13 @@ import httpx
 
 from core.observability.logging import get_logger
 from core.observability.metrics import ingestion_errors_total, ingestion_items_fetched_total
-from ingestion.connectors.base import RawTender, RawTenderDocument
+from ingestion.connectors.base import RawTender, RawTenderDocument, RawTenderItem
 
 logger = get_logger(__name__)
 
 PNCP_BASE_URL = "https://pncp.gov.br/api/consulta/v1"
+# Base diferente do resto do conector — ver nota de verificacao no topo do modulo.
+PNCP_ITEMS_BASE_URL = "https://pncp.gov.br/api/pncp/v1"
 
 # Codigos de modalidade de contratacao do PNCP (Manual de Integracao) — a API exige exatamente
 # um codigo por requisicao, entao o conector itera sobre esta lista. Cobre as modalidades que
@@ -59,9 +72,15 @@ class PncpConnectorError(Exception):
 class PncpConnector:
     source_name = "pncp"
 
-    def __init__(self, base_url: str = PNCP_BASE_URL, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        base_url: str = PNCP_BASE_URL,
+        timeout: float = 30.0,
+        items_base_url: str = PNCP_ITEMS_BASE_URL,
+    ) -> None:
         self._base_url = base_url
         self._timeout = timeout
+        self._items_base_url = items_base_url
 
     async def fetch_recent(
         self,
@@ -89,14 +108,10 @@ class PncpConnector:
                 "tamanhoPagina": _PAGE_SIZE,
             }
             try:
-                body = await self._request_with_retry(
-                    client, "/contratacoes/publicacao", params
-                )
+                body = await self._request_with_retry(client, "/contratacoes/publicacao", params)
             except PncpConnectorError:
                 ingestion_errors_total.labels(source=self.source_name).inc()
-                logger.error(
-                    "pncp.fetch_failed", modalidade=modalidade, pagina=pagina
-                )
+                logger.error("pncp.fetch_failed", modalidade=modalidade, pagina=pagina)
                 return
 
             items = body.get("data", [])
@@ -168,6 +183,63 @@ class PncpConnector:
             for doc in items
         ]
 
+    async def fetch_items(
+        self, orgao_cnpj: str, ano_compra: int, sequencial_compra: int
+    ) -> list[RawTenderItem]:
+        """Busca os itens/lotes de uma compra especifica, sob demanda (mesmo padrao de
+        `fetch_documents`: so para Tender novo ou com versao alterada). Path e base URL
+        confirmados ao vivo (ver nota no topo do modulo) — DIFERENTE da base usada pelo resto
+        do conector.
+
+        Um 404 aqui e tratado como "sem itens" (retorno vazio, sem erro) pela mesma razao ja
+        documentada em `fetch_documents`: nao da para distinguir com certeza "path errado" de
+        "compra sem itens cadastrados", e bloquear a ingestao por causa disso seria pior que
+        simplesmente nao ter itens desta vez.
+        """
+        path = f"/orgaos/{orgao_cnpj}/compras/{ano_compra}/{sequencial_compra}/itens"
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            try:
+                response = await self._request_raw_with_retry(
+                    client, f"{self._items_base_url}{path}", params={}
+                )
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 404:
+                    return []
+                ingestion_errors_total.labels(source=self.source_name).inc()
+                logger.error(
+                    "pncp.fetch_items_failed",
+                    orgao_cnpj=orgao_cnpj,
+                    ano_compra=ano_compra,
+                    sequencial_compra=sequencial_compra,
+                    status_code=exc.response.status_code,
+                )
+                return []
+            except PncpConnectorError:
+                ingestion_errors_total.labels(source=self.source_name).inc()
+                logger.error(
+                    "pncp.fetch_items_failed",
+                    orgao_cnpj=orgao_cnpj,
+                    ano_compra=ano_compra,
+                    sequencial_compra=sequencial_compra,
+                )
+                return []
+
+        items = response.json()
+        parsed: list[RawTenderItem] = []
+        for item in items:
+            try:
+                parsed.append(_parse_item(item))
+            except (KeyError, ValueError, InvalidOperation) as exc:
+                ingestion_errors_total.labels(source=self.source_name).inc()
+                logger.error(
+                    "pncp.parse_item_failed",
+                    error=str(exc),
+                    orgao_cnpj=orgao_cnpj,
+                    ano_compra=ano_compra,
+                    sequencial_compra=sequencial_compra,
+                )
+        return parsed
+
     async def download_document(self, download_url: str) -> bytes:
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             response = await self._request_raw_with_retry(client, download_url)
@@ -235,6 +307,27 @@ def _to_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
     return datetime.fromisoformat(value)
+
+
+def _parse_item(item: dict[str, Any]) -> RawTenderItem:
+    return RawTenderItem(
+        item_number=int(item["numeroItem"]),
+        description=item.get("descricao", ""),
+        material_or_service=item.get("materialOuServicoNome"),
+        quantity=_to_decimal(item.get("quantidade")),
+        unit_of_measure=item.get("unidadeMedida"),
+        # `orcamentoSigiloso=True` faz o PNCP omitir/zerar valores estimados de proposito (sigilo
+        # de orcamento previsto em lei) — None aqui, nao 0, para nao confundir "sigiloso" com
+        # "gratuito" a jusante.
+        unit_estimated_value=(
+            None
+            if item.get("orcamentoSigiloso")
+            else _to_decimal(item.get("valorUnitarioEstimado"))
+        ),
+        total_estimated_value=(
+            None if item.get("orcamentoSigiloso") else _to_decimal(item.get("valorTotal"))
+        ),
+    )
 
 
 def _parse_tender(item: dict[str, Any]) -> RawTender:

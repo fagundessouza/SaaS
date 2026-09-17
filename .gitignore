@@ -24,6 +24,9 @@ ops/docker/volumes/
 minio_data/
 pg_data/
 
+# Override local de portas do docker-compose (por maquina — ver docker-compose.override.yml)
+ops/docker/docker-compose.override.yml
+
 # Dados de idioma do Tesseract (baixados localmente, nao versionados — ver backend/README.md)
 backend/.tessdata/
 

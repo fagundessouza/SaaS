@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from core.observability.logging import get_logger
+from domains.procurement.tenders.items_service import store_tender_items
 from domains.procurement.tenders.service import (
     IngestOutcome,
     ingest_raw_tender,
@@ -45,6 +46,12 @@ async def run_pncp_ingestion_job(ctx: dict[str, Any]) -> dict[str, int]:
             )
             if documents:
                 await store_tender_documents(result.tender_id, raw.source, documents, connector)
+
+            items = await connector.fetch_items(
+                raw.orgao_cnpj, raw.ano_compra, raw.sequencial_compra
+            )
+            if items:
+                await store_tender_items(result.tender_id, raw.source, items)
 
     logger.info("pncp_ingestion.completed", **counts)
     return counts

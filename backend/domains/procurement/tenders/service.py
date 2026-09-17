@@ -27,6 +27,9 @@ from core.observability.metrics import (
 )
 from core.storage.client import get_storage_client
 from domains.procurement.tenders.models import Tender, TenderDocument, TenderVersion
+from domains.procurement.tenders.requirements_service import (
+    extract_requirements_for_document_version,
+)
 from ingestion.connectors.base import Connector, RawTender, RawTenderDocument
 
 logger = get_logger(__name__)
@@ -235,6 +238,22 @@ async def store_tender_documents(
         except Exception as exc:  # noqa: BLE001 — falha de indexacao nao e falha de ingestao
             logger.error(
                 "tender_document.indexing_failed",
+                tender_id=str(tender_id),
+                external_document_id=doc.external_document_id,
+                error=str(exc),
+            )
+            continue
+
+        # Extracao de Requirement (Fase 6) roda apos a indexacao ter sucesso (depende dos
+        # chunks ja estarem no Qdrant, ver requirements_service.py) e tambem nunca derruba a
+        # ingestao — mesmo padrao defensivo do processamento/indexacao acima.
+        try:
+            await extract_requirements_for_document_version(
+                tender_id, processing.document_version_id
+            )
+        except Exception as exc:  # noqa: BLE001 — falha de extracao nao e falha de ingestao
+            logger.error(
+                "tender_document.requirement_extraction_failed",
                 tender_id=str(tender_id),
                 external_document_id=doc.external_document_id,
                 error=str(exc),

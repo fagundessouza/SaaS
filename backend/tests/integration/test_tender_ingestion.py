@@ -18,7 +18,7 @@ from domains.procurement.tenders.service import (
     ingest_raw_tender,
     store_tender_documents,
 )
-from ingestion.connectors.base import RawTender, RawTenderDocument
+from ingestion.connectors.base import RawTender, RawTenderDocument, RawTenderItem
 from tests.pdf_fixtures import make_native_text_pdf
 
 
@@ -56,10 +56,14 @@ async def test_ingest_new_tender_creates_tender_and_first_version() -> None:
         assert tender.latest_version_number == 1
 
         versions = (
-            await session.execute(
-                select(TenderVersion).where(TenderVersion.tender_id == result.tender_id)
+            (
+                await session.execute(
+                    select(TenderVersion).where(TenderVersion.tender_id == result.tender_id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(versions) == 1
         assert versions[0].version_number == 1
 
@@ -77,10 +81,14 @@ async def test_ingest_same_payload_twice_is_unchanged() -> None:
 
     async with system_session() as session:
         versions = (
-            await session.execute(
-                select(TenderVersion).where(TenderVersion.tender_id == first.tender_id)
+            (
+                await session.execute(
+                    select(TenderVersion).where(TenderVersion.tender_id == first.tender_id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(versions) == 1  # nenhuma versao nova foi criada
 
 
@@ -101,12 +109,16 @@ async def test_ingest_changed_payload_creates_new_version() -> None:
         assert tender.objeto == "Objeto retificado"
 
         versions = (
-            await session.execute(
-                select(TenderVersion)
-                .where(TenderVersion.tender_id == first.tender_id)
-                .order_by(TenderVersion.version_number)
+            (
+                await session.execute(
+                    select(TenderVersion)
+                    .where(TenderVersion.tender_id == first.tender_id)
+                    .order_by(TenderVersion.version_number)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert [v.version_number for v in versions] == [1, 2]
         assert versions[0].raw_payload["objetoCompra"] == "Objeto original"
         assert versions[1].raw_payload["objetoCompra"] == "Objeto retificado"
@@ -118,8 +130,12 @@ class _FakeConnector:
     source_name = "test"
 
     def __init__(self, content: bytes | None = None) -> None:
-        self._content = content if content is not None else make_native_text_pdf(
-            "Edital de Pregao Eletronico numero 999/2026 - documento de teste"
+        self._content = (
+            content
+            if content is not None
+            else make_native_text_pdf(
+                "Edital de Pregao Eletronico numero 999/2026 - documento de teste"
+            )
         )
         self.download_calls = 0
 
@@ -129,6 +145,11 @@ class _FakeConnector:
     async def fetch_documents(
         self, orgao_cnpj: str, ano_compra: int, sequencial_compra: int
     ) -> list[RawTenderDocument]:
+        raise NotImplementedError("nao usado nestes testes")
+
+    async def fetch_items(
+        self, orgao_cnpj: str, ano_compra: int, sequencial_compra: int
+    ) -> list[RawTenderItem]:
         raise NotImplementedError("nao usado nestes testes")
 
     async def download_document(self, download_url: str) -> bytes:
@@ -155,10 +176,14 @@ async def test_store_tender_documents_downloads_and_persists() -> None:
 
     async with system_session() as session:
         docs = (
-            await session.execute(
-                select(TenderDocument).where(TenderDocument.tender_id == result.tender_id)
+            (
+                await session.execute(
+                    select(TenderDocument).where(TenderDocument.tender_id == result.tender_id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(docs) == 1
         assert docs[0].downloaded_at is not None
         assert docs[0].content_hash is not None
@@ -188,14 +213,17 @@ async def test_store_tender_documents_records_failure_without_raising() -> None:
     class _FailingConnector:
         source_name = "test"
 
-        def fetch_recent(
-            self, data_inicial: date, data_final: date
-        ) -> AsyncIterator[RawTender]:
+        def fetch_recent(self, data_inicial: date, data_final: date) -> AsyncIterator[RawTender]:
             raise NotImplementedError("nao usado nestes testes")
 
         async def fetch_documents(
             self, orgao_cnpj: str, ano_compra: int, sequencial_compra: int
         ) -> list[RawTenderDocument]:
+            raise NotImplementedError("nao usado nestes testes")
+
+        async def fetch_items(
+            self, orgao_cnpj: str, ano_compra: int, sequencial_compra: int
+        ) -> list[RawTenderItem]:
             raise NotImplementedError("nao usado nestes testes")
 
         async def download_document(self, download_url: str) -> bytes:
@@ -205,10 +233,14 @@ async def test_store_tender_documents_records_failure_without_raising() -> None:
 
     async with system_session() as session:
         docs = (
-            await session.execute(
-                select(TenderDocument).where(TenderDocument.tender_id == result.tender_id)
+            (
+                await session.execute(
+                    select(TenderDocument).where(TenderDocument.tender_id == result.tender_id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(docs) == 1
         assert docs[0].downloaded_at is None
         assert docs[0].download_error == "timeout simulado"

@@ -23,6 +23,17 @@ class RawTenderDocument:
 
 
 @dataclass(frozen=True)
+class RawTenderItem:
+    item_number: int
+    description: str
+    material_or_service: str | None
+    quantity: Decimal | None
+    unit_of_measure: str | None
+    unit_estimated_value: Decimal | None
+    total_estimated_value: Decimal | None
+
+
+@dataclass(frozen=True)
 class RawTender:
     source: str
     external_id: str
@@ -53,5 +64,9 @@ class Connector(Protocol):
     async def fetch_documents(
         self, orgao_cnpj: str, ano_compra: int, sequencial_compra: int
     ) -> list[RawTenderDocument]: ...
+
+    async def fetch_items(
+        self, orgao_cnpj: str, ano_compra: int, sequencial_compra: int
+    ) -> list[RawTenderItem]: ...
 
     async def download_document(self, download_url: str) -> bytes: ...

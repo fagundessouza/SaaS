@@ -15,9 +15,10 @@ import respx
 
 import ingestion.connectors.pncp as pncp_module
 from ingestion.connectors.base import RawTender
-from ingestion.connectors.pncp import PncpConnector, PncpConnectorError, _parse_tender
+from ingestion.connectors.pncp import PncpConnector, PncpConnectorError, _parse_item, _parse_tender
 
 PNCP_BASE = "https://pncp.gov.br/api/consulta/v1"
+PNCP_ITEMS_BASE = "https://pncp.gov.br/api/pncp/v1"
 
 
 @pytest.fixture(autouse=True)
@@ -152,6 +153,78 @@ async def test_fetch_recent_gives_up_after_max_retries_without_raising() -> None
     ]
 
     assert results == []
+
+
+def _sample_pncp_item(numero: int = 1) -> dict[str, Any]:
+    """Formato confirmado ao vivo contra a API real (ver nota de verificacao em
+    ingestion/connectors/pncp.py) — compra 08084014000142/2024/57, Municipio de Campo
+    Grande/RN."""
+    return {
+        "numeroItem": numero,
+        "descricao": "Freezer Horizontal 546L",
+        "materialOuServico": "M",
+        "materialOuServicoNome": "Material",
+        "valorUnitarioEstimado": 7259.81,
+        "valorTotal": 58078.48,
+        "quantidade": 8,
+        "unidadeMedida": "Unidade",
+        "orcamentoSigiloso": False,
+    }
+
+
+def test_parse_item_maps_documented_fields() -> None:
+    raw = _parse_item(_sample_pncp_item())
+
+    assert raw.item_number == 1
+    assert raw.description == "Freezer Horizontal 546L"
+    assert raw.material_or_service == "Material"
+    assert raw.quantity == Decimal("8")
+    assert raw.unit_of_measure == "Unidade"
+    assert raw.unit_estimated_value == Decimal("7259.81")
+    assert raw.total_estimated_value == Decimal("58078.48")
+
+
+def test_parse_item_hides_values_when_orcamento_sigiloso() -> None:
+    item = _sample_pncp_item()
+    item["orcamentoSigiloso"] = True
+
+    raw = _parse_item(item)
+
+    assert raw.unit_estimated_value is None
+    assert raw.total_estimated_value is None
+    assert raw.quantity == Decimal("8")  # quantidade nao e sigilosa, so valor
+
+
+def test_parse_item_requires_numero_item() -> None:
+    item = _sample_pncp_item()
+    del item["numeroItem"]
+
+    with pytest.raises(KeyError):
+        _parse_item(item)
+
+
+@respx.mock
+async def test_fetch_items_parses_real_endpoint_shape() -> None:
+    respx.get(f"{PNCP_ITEMS_BASE}/orgaos/00394460000141/compras/2026/1/itens").mock(
+        return_value=httpx.Response(200, json=[_sample_pncp_item(1), _sample_pncp_item(2)])
+    )
+
+    connector = PncpConnector()
+    items = await connector.fetch_items("00394460000141", 2026, 1)
+
+    assert [item.item_number for item in items] == [1, 2]
+
+
+@respx.mock
+async def test_fetch_items_treats_404_as_no_items() -> None:
+    respx.get(f"{PNCP_ITEMS_BASE}/orgaos/00394460000141/compras/2026/1/itens").mock(
+        return_value=httpx.Response(404)
+    )
+
+    connector = PncpConnector()
+    items = await connector.fetch_items("00394460000141", 2026, 1)
+
+    assert items == []
 
 
 async def test_request_with_retry_raises_connector_error_when_exhausted() -> None:

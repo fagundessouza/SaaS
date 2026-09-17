@@ -6,12 +6,23 @@ domains/procurement/tenders/service.py e docs/adr/0009-pncp-fonte-canonica.md).
 
 from __future__ import annotations
 
+import enum
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -98,3 +109,77 @@ class TenderDocument(IdMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("documents.id"), nullable=True
     )
     processing_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class TenderItem(IdMixin, TimestampMixin, Base):
+    """Item/lote de um Tender (Fase 6). GLOBAL como o proprio Tender — extraido por regra
+    deterministica (sem IA: o PNCP ja entrega item estruturado, ver
+    ingestion/connectors/pncp.py `fetch_items`/`_parse_item`, ADR-0007). Nao versionado por
+    retificacao como TenderVersion — uma retificacao de item reingesta e faz upsert por
+    `(tender_id, item_number)`, ver domains/procurement/tenders/items_service.py.
+    """
+
+    __tablename__ = "tender_items"
+    __table_args__ = (
+        UniqueConstraint("tender_id", "item_number", name="uq_tender_items_item_number"),
+    )
+
+    tender_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenders.id"), nullable=False, index=True
+    )
+    item_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    material_or_service: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    unit_of_measure: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    # None (nao 0) quando o orgao marcou orcamento sigiloso — ver _parse_item.
+    unit_estimated_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+    total_estimated_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+
+
+class RequirementCategory(enum.StrEnum):
+    FISCAL = "fiscal"
+    TECNICA = "tecnica"
+    ECONOMICO_FINANCEIRA = "economico_financeira"
+    JURIDICA = "juridica"
+
+
+class Requirement(IdMixin, TimestampMixin, Base):
+    """Requisito de habilitacao extraido do texto do edital (Fase 6). GLOBAL como o Tender.
+
+    Extracao em duas etapas (ADR-0007, "IA assistindo regra"), espelhando o chunking da Fase 5:
+    1. REGRA: candidatos sao chunks do tipo `clause` (ver ai_platform/chunking) cujo cabecalho
+       de secao bate com vocabulario conhecido de habilitacao ("DA HABILITACAO", "QUALIFICACAO
+       TECNICA" etc. — ver domains/procurement/tenders/requirements_service.py).
+    2. IA: cada candidato e classificado em `RequirementCategory` por similaridade de embedding
+       contra um texto-prototipo por categoria (mesmo EmbeddingProvider self-hosted da Fase 5,
+       sem LLM generativo novo — ver DECISOES do relatorio da Fase 6). `confidence` e o cosseno
+       da categoria vencedora, nao uma probabilidade calibrada.
+
+    `document_version_id` + `page_start`/`page_end` + `section` sao a evidencia (mesmo padrao
+    de `Evidence` do DOMAIN_MODEL: sempre aponta para DocumentVersion + pagina + secao).
+    Idempotente por `(document_version_id, chunk_index)` — chunking e uma funcao pura de
+    `page_texts`, entao o mesmo chunk sempre tem o mesmo indice para a mesma versao.
+    """
+
+    __tablename__ = "requirements"
+    __table_args__ = (
+        UniqueConstraint(
+            "document_version_id", "chunk_index", name="uq_requirements_document_chunk"
+        ),
+    )
+
+    tender_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenders.id"), nullable=False, index=True
+    )
+    category: Mapped[RequirementCategory] = mapped_column(String(30), nullable=False, index=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+
+    document_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("document_versions.id"), nullable=False, index=True
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    section: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    page_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    page_end: Mapped[int] = mapped_column(Integer, nullable=False)
