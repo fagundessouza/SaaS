@@ -14,14 +14,17 @@ from ai_platform.documents.models import DocumentVersion, ExtractionMethod, Extr
 from ai_platform.documents.service import get_or_process_document
 from core.config import get_settings
 from core.db.session import system_session
+from tests.conftest import unique_text
 from tests.pdf_fixtures import make_corrupted_pdf, make_image_only_pdf, make_native_text_pdf
 
-_LONG_TEXT = (
-    "Edital de Pregao Eletronico numero 001/2026. Objeto: aquisicao de materiais de "
-    "escritorio para a Secretaria de Administracao do Municipio Exemplo, incluindo papel, "
-    "canetas, grampeadores e demais itens de consumo necessarios ao funcionamento regular "
-    "das unidades administrativas, conforme especificacoes detalhadas no Termo de Referencia."
-)
+
+def _long_text(marker: str) -> str:
+    return (
+        f"Edital de Pregao Eletronico numero 001/2026 {marker}. Objeto: aquisicao de materiais "
+        "de escritorio para a Secretaria de Administracao do Municipio Exemplo, incluindo papel, "
+        "canetas, grampeadores e demais itens de consumo necessarios ao funcionamento regular "
+        "das unidades administrativas, conforme especificacoes detalhadas no Termo de Referencia."
+    )
 
 
 def _tesseract_available() -> bool:
@@ -30,7 +33,7 @@ def _tesseract_available() -> bool:
 
 
 async def test_process_native_text_pdf_is_classified_correctly() -> None:
-    pdf_bytes = make_native_text_pdf(_LONG_TEXT)
+    pdf_bytes = make_native_text_pdf(_long_text(unique_text("classify")))
 
     result = await get_or_process_document(pdf_bytes)
 
@@ -47,7 +50,7 @@ async def test_process_native_text_pdf_is_classified_correctly() -> None:
 
 
 async def test_process_same_content_twice_reuses_cache() -> None:
-    pdf_bytes = make_native_text_pdf(_LONG_TEXT)
+    pdf_bytes = make_native_text_pdf(_long_text(unique_text("cache-reuse")))
 
     first = await get_or_process_document(pdf_bytes)
     second = await get_or_process_document(pdf_bytes)
@@ -81,7 +84,9 @@ async def test_corrupted_pdf_is_marked_unusable_without_raising() -> None:
     not _tesseract_available(), reason="Tesseract nao encontrado (ver TESSERACT_CMD no .env)"
 )
 async def test_process_image_only_pdf_falls_back_to_ocr() -> None:
-    pdf_bytes = make_image_only_pdf("Aviso de licitacao numero 042 barra 2026 pregao eletronico")
+    pdf_bytes = make_image_only_pdf(
+        unique_text("Aviso de licitacao numero 042 barra 2026 pregao eletronico")
+    )
 
     result = await get_or_process_document(pdf_bytes)
 

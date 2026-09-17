@@ -54,9 +54,10 @@ passar `--tessdata-dir` como config string, que se mostrou frágil com paths do 
   com texto em português (Pillow), rodei o Tesseract via linha de comando — texto extraído
   corretamente. Depois testei o pipeline completo (`ocr_pdf`) contra um PDF só-imagem gerado com
   `fpdf2` — texto extraído com 89% de confiança média, exatamente o texto esperado.
-- `pytest -v` — ver contagem final abaixo (execução em andamento no momento da escrita deste
-  relatório; Docker Desktop precisou ser reiniciado no início desta sessão — WSL2 backend não
-  subiu na primeira tentativa).
+- `pytest -v` — **55/55 testes passando** (suíte inteira do projeto, Fases 1-4), rodada duas
+  vezes seguidas sem resetar o banco para confirmar idempotência. Docker Desktop precisou ser
+  reiniciado no início desta sessão (ver PROBLEMAS item 4) antes de conseguir rodar contra
+  Postgres/MinIO reais.
   - `tests/unit/test_document_quality.py`: PDF nativo → suficiente; PDF só-imagem (gerado via
     fpdf2 + Pillow) → insuficiente; PDF corrompido → `UnreadablePdfError`.
   - `tests/unit/test_ocr.py`: OCR real (sem mock) contra PDF só-imagem gerado nos testes —
@@ -92,7 +93,21 @@ passar `--tessdata-dir` como config string, que se mostrou frágil com paths do 
    ambiente).
 4. **Docker Desktop não subiu na primeira tentativa** ao retomar o trabalho nesta sessão — o
    backend WSL2 (`docker-desktop` distro) ficou em estado `Stopped` mesmo com os processos da UI
-   rodando. Resolvido com `wsl --shutdown` seguido de reinício limpo do Docker Desktop.
+   rodando. A causa raiz real (achada nos logs): um socket AF_UNIX órfão
+   (`sailor-ingest.sock`) que nem `wsl --shutdown` nem matar todos os processos Docker
+   conseguiam liberar — o handle era mantido pelo serviço `WslService` do Windows, cujo reinício
+   exige privilégio de administrador (não disponível nesta sessão). Resolvido pedindo ao usuário
+   para reiniciar o Docker Desktop manualmente (via UI, com prompt de UAC se necessário).
+5. **Bug de isolamento de teste pego só ao rodar contra Postgres real** (não aparecia em nenhuma
+   validação anterior porque o Docker esteve indisponível entre a escrita dos testes e esta
+   verificação): `test_process_native_text_pdf_is_classified_correctly` e
+   `test_process_same_content_twice_reuses_cache` compartilhavam a mesma constante de texto
+   (`_LONG_TEXT`) — como as duas rodam na mesma sessão do pytest sem rollback entre testes (ver
+   `tests/conftest.py`), o `content_hash` colidia e a segunda função de teste via
+   `reused_cache=True` já na primeira chamada, quebrando sua própria premissa. Mesma classe de
+   problema já resolvida para email/CNPJ nas Fases 2/3 (dados fixos + Postgres persistente entre
+   execuções = colisão), só que desta vez para conteúdo de PDF — corrigido com um novo helper
+   `unique_text()` em `tests/conftest.py`, seguindo o mesmo padrão de `unique_email`/`unique_cnpj`.
 
 ## RISCOS
 

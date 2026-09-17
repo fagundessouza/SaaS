@@ -36,6 +36,16 @@ def unique_cnpj() -> str:
     return "".join(str((digits >> (i * 4)) % 10) for i in range(14))
 
 
+def unique_text(base: str) -> str:
+    """Texto garantidamente unico entre chamadas — necessario para testes de
+    ai_platform.documents (Document.content_hash e unico globalmente, ver ADR-0012). Gerar a
+    partir de uma funcao chamada dentro de cada teste, nunca de uma constante de modulo
+    compartilhada entre testes: dois testes que precisam de identidade de Document independente
+    mas usam o mesmo texto fixo colidem no mesmo content_hash, mesmo dentro de uma unica
+    execucao do pytest (sem rollback entre testes — ver _reset_async_singletons)."""
+    return f"{base} [{uuid.uuid4().hex[:8]}]"
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _ensure_storage_bucket() -> None:
     """Sem isto, testes que tocam storage (ex.: tests/integration/test_tender_ingestion.py)
