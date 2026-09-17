@@ -14,6 +14,7 @@ preso a nenhum event loop, e recarrega-lo a cada teste custaria ~15s por teste s
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import AsyncGenerator
 
@@ -60,6 +61,31 @@ def _ensure_storage_bucket() -> None:
     disparam). Garantido aqui uma vez por sessao de teste, independente de qualquer processo
     externo ter rodado antes."""
     get_storage_client().ensure_bucket()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _reset_knowledge_collection() -> None:
+    """Mesma razao de `_ensure_storage_bucket`, mas para o Qdrant: sem isto, a colecao
+    `global_knowledge` acumula chunks quase identicos de sessoes de `pytest` anteriores sem
+    limite — ja causou um teste flaky em tests/integration/test_retrieval.py (`limit=20` na
+    busca nao e imune a acumulo *indefinido* entre muitas execucoes de uma mesma sessao de
+    desenvolvimento; achado apos 113 pontos acumulados). Recriada do zero uma vez por sessao de
+    pytest; os poucos chunks que os proprios testes desta sessao inserem depois nao chegam perto
+    de reproduzir o problema.
+
+    Fixture sincrona (nao `pytest_asyncio`) de proposito: roda antes de qualquer event loop de
+    teste existir, via `asyncio.run` isolado — e por isso reseta `_client` para `None` no final,
+    para que o primeiro teste real recrie o client preso ao loop correto (mesmo motivo de
+    `_reset_async_singletons` abaixo)."""
+
+    async def _reset() -> None:
+        client = qdrant_client_module.get_qdrant_client()
+        if await client.collection_exists(qdrant_client_module.GLOBAL_KNOWLEDGE_COLLECTION):
+            await client.delete_collection(qdrant_client_module.GLOBAL_KNOWLEDGE_COLLECTION)
+        await client.close()
+
+    asyncio.run(_reset())
+    qdrant_client_module._client = None
 
 
 @pytest_asyncio.fixture(autouse=True)

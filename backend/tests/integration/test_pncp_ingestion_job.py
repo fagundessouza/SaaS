@@ -21,8 +21,12 @@ PNCP_ITEMS_BASE = "https://pncp.gov.br/api/pncp/v1"
 
 def _mock_no_documents_or_items() -> None:
     """Toda Tender CREATED/UPDATED aciona fetch_documents e fetch_items (ver
-    ingestion/pipeline/jobs.py) — sem isto, respx recusa a chamada nao mockada."""
-    respx.get(url__regex=rf"{PNCP_BASE}/orgaos/.+/arquivos").mock(return_value=httpx.Response(404))
+    ingestion/pipeline/jobs.py) — sem isto, respx recusa a chamada nao mockada. Ambos sob
+    PNCP_ITEMS_BASE, nao PNCP_BASE (ver correcao de bug em ingestion/connectors/pncp.py:
+    fetch_documents usava a base errada ate esta fase)."""
+    respx.get(url__regex=rf"{PNCP_ITEMS_BASE}/orgaos/.+/arquivos").mock(
+        return_value=httpx.Response(404)
+    )
     respx.get(url__regex=rf"{PNCP_ITEMS_BASE}/orgaos/.+/itens").mock(
         return_value=httpx.Response(404)
     )

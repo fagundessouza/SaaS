@@ -32,6 +32,16 @@ NOTA DE VERIFICACAO (Fase 6, `fetch_items`): o sub-recurso de itens NAO vive sob
 (`PNCP_ITEMS_BASE_URL` abaixo). Documentado explicitamente porque a inconsistencia de base URL
 entre sub-recursos do mesmo `numeroControlePNCP` nao esta descrita no Manual de Integracao —
 achada por tentativa direta contra a API real, nao por documentacao.
+
+BUG REAL CORRIGIDO (achado ao comparar duas implementacoes independentes desta mesma fase, ver
+docs/phase-reports/FASE_6_REPORT.md): a nota acima ja registrava que `/arquivos` sofre da MESMA
+inconsistencia de base URL que `/itens`, mas so `fetch_items` tinha sido corrigido para usar
+`PNCP_ITEMS_BASE_URL` — `fetch_documents` continuava chamando `_request_with_retry` sem
+`base_url`, que por padrao usa `PNCP_BASE_URL` (a base errada para este sub-recurso). Confirmado
+ao vivo contra a mesma compra real (`13183513000127/2025/173`): a base errada retorna 404 (os
+"pendente" documentados acima), a base correta retorna 200 com a lista de documentos.
+`fetch_documents` nunca baixou um documento real de producao ate esta correcao — o best-effort
+silencioso (um 404 e tratado como "sem documentos") mascarou isso sem nenhum log de erro.
 """
 
 from __future__ import annotations
@@ -140,16 +150,22 @@ class PncpConnector:
         listagem, que ja e uma chamada por pagina; buscar anexos de toda compra listada
         multiplicaria as chamadas a uma API que ja se mostrou instavel neste ambiente.
 
-        NOTA: o path `/arquivos` nao foi confirmado ao vivo (ver nota de verificacao no topo do
-        modulo) — retornou 404 nas compras testadas. Um 404 aqui e tratado como "sem
-        documentos" (retorno vazio, sem erro), que e o comportamento seguro tanto se o path
-        estiver certo e a compra realmente nao tiver anexos, quanto se o path estiver errado —
-        em ambos os casos, bloquear a ingestao do Tender por causa disso seria pior.
+        BUG REAL CORRIGIDO: esta funcao chamava `_request_with_retry` sem `base_url`, que por
+        padrao usa `self._base_url` (`/api/consulta/v1`, a mesma da listagem principal) — mas
+        `/arquivos`, assim como `/itens` (ver `fetch_items`), vive sob `self._items_base_url`
+        (`/api/pncp/v1`). Confirmado ao vivo contra uma compra real
+        (`13183513000127/2025/173`): a base errada retorna 404 (os mesmos 404 que a nota
+        original deste modulo documentava como "path nao confirmado"), a base correta retorna
+        200 com a lista de documentos. Ou seja: `fetch_documents` nunca baixou um documento real
+        de producao ate esta correcao — o "best-effort silencioso" abaixo (um 404 e tratado como
+        "sem documentos") mascarou isso sem nenhum log de erro.
         """
         path = f"/orgaos/{orgao_cnpj}/compras/{ano_compra}/{sequencial_compra}/arquivos"
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             try:
-                body = await self._request_with_retry(client, path, params={})
+                body = await self._request_with_retry(
+                    client, path, params={}, base_url=self._items_base_url
+                )
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code == 404:
                     return []
@@ -246,10 +262,15 @@ class PncpConnector:
             return response.content
 
     async def _request_with_retry(
-        self, client: httpx.AsyncClient, path: str, params: dict[str, Any]
+        self,
+        client: httpx.AsyncClient,
+        path: str,
+        params: dict[str, Any],
+        *,
+        base_url: str | None = None,
     ) -> dict[str, Any]:
         response = await self._request_raw_with_retry(
-            client, f"{self._base_url}{path}", params=params
+            client, f"{base_url or self._base_url}{path}", params=params
         )
         result: dict[str, Any] = response.json()
         return result

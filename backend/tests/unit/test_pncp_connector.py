@@ -227,6 +227,30 @@ async def test_fetch_items_treats_404_as_no_items() -> None:
     assert items == []
 
 
+@respx.mock
+async def test_fetch_documents_uses_items_base_url_not_listing_base_url() -> None:
+    """Regressao: `fetch_documents` chamava `_request_with_retry` sem `base_url`, que por
+    padrao usa PNCP_BASE (a base da listagem) — mas `/arquivos`, como `/itens`, vive sob
+    PNCP_ITEMS_BASE (ver nota de correcao de bug no topo de ingestion/connectors/pncp.py).
+    Confirmado ao vivo contra uma compra real antes desta correcao: a base errada retorna 404
+    (os mesmos 404 que a Fase 3 documentou como 'pendente'), a correta retorna 200."""
+    respx.get(f"{PNCP_ITEMS_BASE}/orgaos/00394460000141/compras/2026/1/arquivos").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {"sequencialDocumento": 1, "titulo": "Edital", "uri": "https://x/edital.pdf"},
+            ],
+        )
+    )
+
+    connector = PncpConnector()
+    documents = await connector.fetch_documents("00394460000141", 2026, 1)
+
+    assert len(documents) == 1
+    assert documents[0].external_document_id == "1"
+    assert documents[0].download_url == "https://x/edital.pdf"
+
+
 async def test_request_with_retry_raises_connector_error_when_exhausted() -> None:
     connector = PncpConnector(base_url="https://pncp.invalido.exemplo/v1", timeout=1.0)
 
