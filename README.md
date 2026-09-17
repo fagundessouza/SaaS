@@ -1,7 +1,7 @@
 # MicroSaaS de Inteligência em Licitações
 
 Plataforma B2B de inteligência operacional para empresas que participam de licitações públicas no
-Brasil. Status atual: **Fase 8 (Analysis Engine) concluída** — ver
+Brasil. Status atual: **Fase 10 (Event + Notification Engine) concluída** — ver
 [docs/phase-reports/](docs/phase-reports/) para os checkpoints completos (implementado, testado,
 problemas encontrados e corrigidos, riscos, pendências) de cada fase.
 
@@ -50,4 +50,7 @@ um ADR novo (ver [regra de não-reset](docs/IMPLEMENTATION_ROADMAP.md)).
 - ✅ Fase 6 — Procurement Domain ([relatório](docs/phase-reports/FASE_6_REPORT.md)).
 - ✅ Fase 7 — Opportunity Engine ([relatório](docs/phase-reports/FASE_7_REPORT.md)).
 - ✅ Fase 8 — Analysis Engine ([relatório](docs/phase-reports/FASE_8_REPORT.md)).
-- ⏳ Fase 9 — Assistente (próxima).
+- ⏸️ Fase 9 — Assistente (adiada — exige decisão de provedor de LLM e de frontend, ver
+  [FASE_10_REPORT](docs/phase-reports/FASE_10_REPORT.md), seção DECISÕES).
+- ✅ Fase 10 — Event + Notification Engine ([relatório](docs/phase-reports/FASE_10_REPORT.md)).
+- ⏳ Fase 11 — Frontend (adiada junto com a Fase 9 — próxima quando houver decisão de stack).

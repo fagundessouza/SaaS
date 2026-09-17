@@ -41,6 +41,15 @@ cruza cada `Requirement` do edital contra `Certificate` (regra — categoria + v
 `Attestation` (embedding, só para categoria técnica) e gera um dossiê auditável, nunca automático
 — só quando o usuário pede via `POST /v1/opportunities/{id}/analysis`.
 
+Fase 9 (Assistente) **adiada** — exige provedor de LLM real e frontend, nenhum dos dois decidido
+ainda (ver [FASE_10_REPORT](../docs/phase-reports/FASE_10_REPORT.md), seção DECISÕES).
+
+Fase 10 (Event + Notification Engine) adicionou `core/notifications` (canais de e-mail/Web Push,
+Alert/Notification/preferências) e `domains/notifications` (roteia evento → quem notificar,
+consumindo o Redis Stream do outbox já existente desde a Fase 1). Canais "console" (sem
+SMTP/VAPID configurados) são implementações reais, não stubs — mesmo raciocínio de
+`core/billing` desde a Fase 2.
+
 ## Subindo o ambiente local
 
 ```bash
@@ -178,6 +187,23 @@ de participação, habilitação, sanções etc. — ver `ai_platform/chunking/c
 faz reranking (isso é Analysis, Fase 8 — ver ADR-0007) e sempre devolve a citação (seção,
 página) junto com o trecho, nunca só o texto solto.
 
+## Notification Engine
+
+```bash
+curl -s localhost:8000/v1/notifications -H "Authorization: Bearer <ACCESS_TOKEN>"
+curl -s -X PUT localhost:8000/v1/notifications/preferences \
+  -H "Authorization: Bearer <ACCESS_TOKEN>" -H "Content-Type: application/json" \
+  -d '{"topic": "TenderUpdated", "channel": "email", "enabled": false}'
+```
+
+Uma retificação de edital (`TenderUpdated`) ou um novo match (`OpportunityMatched`, `Analysis`
+completa) vira um evento no outbox (`core/events`, Fase 1) → despachado para um Redis Stream →
+consumido pelo Notification Engine (`domains/notifications/consumer.py`, cron a cada 10s no
+worker) → vira `Alert` + uma `Notification` por canal habilitado (e-mail, Web Push). Sem
+`SMTP_HOST`/`VAPID_PRIVATE_KEY` configurados (padrão local), os canais "console" logam a
+notificação em vez de enviar de verdade — implementação real, não um stub (mesmo raciocínio de
+`core/billing` desde a Fase 2).
+
 ## Comandos de verificação (checkpoint de fase, ver docs/DEVELOPMENT.md)
 
 ```bash
@@ -210,25 +236,31 @@ Existe: `core/tenancy`, `core/events` (outbox), `core/jobs` (fila Arq), `core/st
 `core/cache` (Redis), `core/observability` (logging + métricas), `core/auth` (JWT + refresh token
 + EmailIndex — ver [ADR-0011](../docs/adr/0011-auth-bootstrap-global-lookup.md)),
 `core/permissions` (RBAC), `core/billing` (Plan/Subscription, sem gateway de pagamento),
+`core/notifications` (Alert/Notification/preferências, canais e-mail + Web Push),
 `domains/procurement/companies` (CompanyProfile + enriquecimento por CNPJ + Certificate/
 Attestation), `domains/procurement/tenders` (Tender/TenderVersion/TenderDocument/TenderItem/
 Requirement), `domains/procurement/opportunities` (Opportunity/OpportunityMatch, funil
 determinístico + semântico), `domains/procurement/analysis` (Analysis/Finding/Evidence, dossiê
-sob demanda), `ingestion/` (conector PNCP + pipeline), `ai_platform/documents`
-(Document/DocumentVersion, extração nativa + OCR) e `ai_platform/chunking`/`embeddings`/
-`retrieval` (chunking estrutural, embeddings locais, busca semântica no Qdrant). RLS aplicado e
-testado em toda tabela `TENANT` (`job_runs`, `users`, `subscriptions`, `company_profiles`,
-`certificates`, `attestations`, `opportunities`, `opportunity_matches`, `analyses`, `findings`,
-`evidences`) — `tenders`/`tender_versions`/`tender_documents`/`tender_items`/`requirements`/
-`documents`/`document_versions` são GLOBAL, sem RLS; chunks vivem só no Qdrant (não duplicados em
-Postgres).
+sob demanda), `domains/notifications` (roteia evento de domínio → quem notificar), `ingestion/`
+(conector PNCP + pipeline), `ai_platform/documents` (Document/DocumentVersion, extração nativa +
+OCR) e `ai_platform/chunking`/`embeddings`/`retrieval` (chunking estrutural, embeddings locais,
+busca semântica no Qdrant). RLS aplicado e testado em toda tabela `TENANT` (`job_runs`, `users`,
+`subscriptions`, `company_profiles`, `certificates`, `attestations`, `opportunities`,
+`opportunity_matches`, `analyses`, `findings`, `evidences`, `alerts`, `notifications`,
+`notification_preferences`, `push_subscriptions`) — `tenders`/`tender_versions`/
+`tender_documents`/`tender_items`/`requirements`/`documents`/`document_versions` são GLOBAL, sem
+RLS; chunks vivem só no Qdrant (não duplicados em Postgres); `domain_events` (outbox) também não
+tem RLS — é infraestrutura interna despachada por um worker de confiança, não dado de tenant.
 
-Não existe ainda: análise jurídica avançada e Deterministic Pricing Engine (Fase 12 —
-`low_extraction_confidence` já é propagado até `Finding` desde a Fase 8, mas ainda nenhum
-consumidor bloqueia uma conclusão de alto risco por causa dela, porque não há conclusão jurídica/
-de preço sendo gerada ainda), `CertificateValidationLog`/verificação automática de certidão
-contra fonte externa (ver PENDÊNCIAS da Fase 8), reranking (deliberadamente fora do escopo do
-retrieval básico, ver ADR-0007 — só entra em Analysis avançada, Fase 12), `ai_platform/llm`/
-`agents` (Fase 9, Assistente), frontend, envio de e-mail de convite/verificação (fica para o
-Notification Engine, Fase 10 — hoje o owner/admin já cria o usuário com senha definida, sem fluxo
-de confirmação por e-mail).
+Não existe ainda: `ai_platform/llm`/`agents` (Fase 9, Assistente — **adiada nesta sessão**, exige
+decisão de provedor de LLM e de frontend), frontend (Fase 11 — idem), análise jurídica avançada e
+Deterministic Pricing Engine (Fase 12 — `low_extraction_confidence` já é propagado até `Finding`
+desde a Fase 8, mas ainda nenhum consumidor bloqueia uma conclusão de alto risco por causa dela,
+porque não há conclusão jurídica/de preço sendo gerada ainda), `CertificateValidationLog`/
+verificação automática de certidão contra fonte externa (ver PENDÊNCIAS da Fase 8), reranking
+(deliberadamente fora do escopo do retrieval básico, ver ADR-0007 — só entra em Analysis
+avançada, Fase 12), envio de e-mail de convite/verificação de usuário (o Notification Engine da
+Fase 10 existe, mas ninguém ainda dispara esse fluxo especificamente — hoje o owner/admin já cria
+o usuário com senha definida), `CertificateExpiring` sem produtor real (falta o job agendado
+diário, ver PENDÊNCIAS da Fase 10), canais SMTP/Web Push reais sem credencial configurada em
+nenhum ambiente ainda (só a implementação "console" foi exercitada).

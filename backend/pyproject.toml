@@ -26,6 +26,7 @@ dependencies = [
     "pypdfium2>=5.13.0",
     "fastembed>=0.8.0",
     "qdrant-client>=1.19.1",
+    "pywebpush>=2.5.0",
 ]
 
 [dependency-groups]

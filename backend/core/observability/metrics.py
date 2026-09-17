@@ -141,3 +141,21 @@ findings_by_status_total = Counter(
     "e o sinal de quanto do funil de habilitacao ainda depende de documentacao pendente (Fase 8)",
     ["status"],
 )
+
+alerts_created_total = Counter(
+    "alerts_created_total",
+    "Total de Alert criados a partir de eventos de dominio (Fase 10), por topico",
+    ["topic"],
+)
+
+notifications_sent_total = Counter(
+    "notifications_sent_total",
+    "Total de tentativas de entrega de Notification, por canal e status final (Fase 10)",
+    ["channel", "status"],
+)
+
+notification_events_processed_total = Counter(
+    "notification_events_processed_total",
+    "Total de eventos de dominio consumidos do Redis Stream pelo Notification Engine (Fase 10)",
+    ["topic"],
+)

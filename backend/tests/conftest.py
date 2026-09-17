@@ -29,6 +29,7 @@ from ai_platform.retrieval import client as qdrant_client_module
 from core.cache import redis_client as redis_client_module
 from core.config import get_settings
 from core.db import session as db_session_module
+from core.events.dispatcher import STREAM_NAME
 from core.jobs import enqueue as enqueue_module
 from core.storage.client import get_storage_client
 
@@ -112,6 +113,14 @@ def _reset_accumulating_tables() -> None:
     `tenders` no grafo de FK (so referenciados por ele), e sozinhos nao causam a explosao
     combinatoria que motivou este fixture.
 
+    `domain_events` (outbox, Fase 1) truncado separadamente: `DomainEvent.tenant_id` NAO tem FK
+    (ver core/events/models.py — e infraestrutura interna despachada por um worker de confianca,
+    nunca RLS-scoped), entao nao e alcancado pelo CASCADE acima. Achado na Fase 10, testando
+    manualmente o Notification Engine antes de escrever os testes formais: 3801 eventos nao
+    despachados tinham se acumulado ao longo do dia (todo evento publicado por qualquer teste
+    desde a Fase 1 que nunca chamou `dispatch_pending_events`), fazendo o consumidor do stream
+    processar um backlog gigante antes de alcancar o evento que o teste de fato criou.
+
     Roda via engine separada com `MIGRATIONS_DATABASE_URL` (usuario `licitacoes`, superusuario)
     porque `app_runtime` (usado por `tenant_session`/`system_session`) tem GRANT de
     SELECT/INSERT/UPDATE/DELETE mas nao de TRUNCATE (ver ops/docker/initdb/01-app-role.sql) —
@@ -126,9 +135,24 @@ def _reset_accumulating_tables() -> None:
         engine = create_async_engine(url)
         async with engine.begin() as conn:
             await conn.execute(text("TRUNCATE TABLE tenants, tenders CASCADE"))
+            await conn.execute(text("TRUNCATE TABLE domain_events"))
         await engine.dispose()
 
+        # O Redis Stream ja recebeu (XADD) todo evento despachado antes de hoje, e um consumer
+        # group novo (Fase 10, ver domains/notifications/consumer.py) comeca do inicio do stream
+        # (`id="0"`) — sem isto, o primeiro teste do Notification Engine teria que processar o
+        # mesmo backlog gigante antes de chegar no evento que o proprio teste criou. `DELETE` na
+        # chave remove o stream inteiro (consumer groups juntos); recriado com `mkstream=True`
+        # na proxima chamada.
+        redis = redis_client_module.get_redis()
+        await redis.delete(STREAM_NAME)
+        await redis.aclose()
+
     asyncio.run(_reset())
+    # `get_redis()` acima criou o singleton preso ao loop temporario do `asyncio.run` desta
+    # fixture (mesmo motivo de `qdrant_client_module._client = None` abaixo) — resetado para
+    # `None` para que o primeiro teste real recrie o client contra o loop corrente.
+    redis_client_module._redis = None
 
 
 @pytest_asyncio.fixture(autouse=True)

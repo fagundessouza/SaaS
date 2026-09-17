@@ -29,6 +29,7 @@ from sqlalchemy import delete, select
 from ai_platform.embeddings.fastembed_provider import get_embedding_provider
 from core.config import get_settings
 from core.db.session import system_session, tenant_session
+from core.events.publisher import publish_event
 from core.observability.logging import get_logger
 from core.observability.metrics import analyses_generated_total, findings_by_status_total
 from domains.procurement.analysis.models import (
@@ -358,6 +359,16 @@ async def generate_analysis(opportunity_id: uuid.UUID) -> uuid.UUID:
                 )
 
         analysis_id = analysis.id
+
+        # Mesma transacao que persiste a Analysis (outbox pattern, ADR-0004) — atomicidade entre
+        # "o dossie existe" e "o evento existe para ser despachado" (ver
+        # docs/EVENT_AND_NOTIFICATION_ARCHITECTURE.md e core/events/publisher.py).
+        await publish_event(
+            session,
+            topic="AnalysisCompleted",
+            payload={"analysis_id": str(analysis_id), "opportunity_id": str(opportunity_id)},
+            tenant_id=tenant_id,
+        )
 
     analyses_generated_total.inc()
     for draft in drafts:

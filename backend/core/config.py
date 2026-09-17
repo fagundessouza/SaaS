@@ -64,6 +64,25 @@ class Settings(BaseSettings):
     analysis_attestation_met_threshold: float = 0.55
     analysis_attestation_review_threshold: float = 0.40
 
+    # Notification Engine (Fase 10). SMTP nao configurado (padrao) = `ConsoleEmailChannel`
+    # (loga a notificacao em vez de enviar — mesmo espirito de "sem gateway de pagamento" ja
+    # usado em core/billing: a interface e real, o provider real entra quando houver um
+    # ambiente com credenciais de verdade para configurar). Ver core/notifications/channels/.
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str = "notificacoes@licitacoes.local"
+
+    # Web Push (VAPID, RFC 8292) — par de chaves proprio do projeto, gerado uma vez com
+    # `uv run python -c "from py_vapid import Vapid02; Vapid02().save_key('vapid_private.pem')"`
+    # (nao versionado, ver .gitignore). Sem exigir nenhuma conta externa: ao contrario de e-mail,
+    # Web Push nao depende de um provedor terceiro, so das proprias chaves. Nao configurado
+    # (padrao) = `ConsolePushChannel`, mesmo raciocinio do e-mail.
+    vapid_private_key: str | None = None
+    vapid_public_key: str | None = None
+    vapid_subject: str = "mailto:contato@licitacoes.local"
+
 
 @lru_cache
 def get_settings() -> Settings:

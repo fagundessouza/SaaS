@@ -21,6 +21,7 @@ from api.v1 import (
     health,
     jobs,
     knowledge,
+    notifications,
     opportunities,
     tenants,
     tenders,
@@ -82,3 +83,4 @@ app.include_router(jobs.router)
 app.include_router(knowledge.router)
 app.include_router(tenders.router)
 app.include_router(opportunities.router)
+app.include_router(notifications.router)
