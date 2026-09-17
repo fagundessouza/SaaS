@@ -85,11 +85,16 @@ async def _create_tenant_with_profile(
     return owner.tenant_id
 
 
-async def _opportunities_of(tenant_id: uuid.UUID) -> list[Opportunity]:
+async def _opportunities_for_tender(
+    tenant_id: uuid.UUID, tender_id: uuid.UUID
+) -> list[Opportunity]:
+    """Sempre filtrado pelo tender do proprio teste — ver NOTA DE TESTE no topo do modulo."""
     with tenant_scope(tenant_id):
         async with tenant_session() as session:
             result = await session.execute(
-                select(Opportunity).where(Opportunity.tenant_id == tenant_id)
+                select(Opportunity).where(
+                    Opportunity.tenant_id == tenant_id, Opportunity.tender_id == tender_id
+                )
             )
             return list(result.scalars().all())
 
@@ -104,10 +109,9 @@ async def test_job_creates_opportunity_with_decomposed_match_and_event() -> None
 
     assert counts["matched"] >= 1
 
-    opportunities = await _opportunities_of(tenant_id)
+    opportunities = await _opportunities_for_tender(tenant_id, tender_id)
     assert len(opportunities) == 1
     opportunity = opportunities[0]
-    assert opportunity.tender_id == tender_id
     assert opportunity.status.value == "discovered"
 
     with tenant_scope(tenant_id):
@@ -137,49 +141,52 @@ async def test_job_creates_opportunity_with_decomposed_match_and_event() -> None
             .scalars()
             .all()
         )
-        assert len(events) == 1
-        assert events[0].payload["tender_id"] == str(tender_id)
+        # Um evento para ESTE tender (o tenant pode ter recebido outros de tenders deixados por
+        # outros testes — ver NOTA DE TESTE no topo).
+        for_this_tender = [e for e in events if e.payload["tender_id"] == str(tender_id)]
+        assert len(for_this_tender) == 1
+        assert for_this_tender[0].payload["confidence"] == {"region": 1.0, "keyword": 1.0}
 
 
 async def test_job_is_idempotent_across_runs() -> None:
-    await _create_tender("Aquisicao de material de escritorio para secretarias", "PB")
+    tender_id = await _create_tender("Aquisicao de material de escritorio para secretarias", "PB")
     tenant_id = await _create_tenant_with_profile(
         regions=["PB"], products=["material de escritorio"]
     )
 
     await run_opportunity_matching_job({})
-    first = await _opportunities_of(tenant_id)
+    first = await _opportunities_for_tender(tenant_id, tender_id)
     await run_opportunity_matching_job({})
-    second = await _opportunities_of(tenant_id)
+    second = await _opportunities_for_tender(tenant_id, tender_id)
 
     assert len(first) == len(second) == 1
     assert first[0].id == second[0].id  # nao recriou nem duplicou
 
 
 async def test_job_skips_tender_from_other_region() -> None:
-    await _create_tender("Aquisicao de material de escritorio para a prefeitura", "SP")
+    tender_id = await _create_tender("Aquisicao de material de escritorio para a prefeitura", "SP")
     tenant_id = await _create_tenant_with_profile(
         regions=["AC"], products=["material de escritorio"]
     )
 
     await run_opportunity_matching_job({})
 
-    assert await _opportunities_of(tenant_id) == []
+    assert await _opportunities_for_tender(tenant_id, tender_id) == []
 
 
 async def test_job_skips_tenant_without_company_profile() -> None:
-    await _create_tender("Aquisicao de material de escritorio", "RN")
+    tender_id = await _create_tender("Aquisicao de material de escritorio", "RN")
     owner = await create_tenant_with_owner(
         company_name="Sem Perfil", email=unique_email("sem-perfil"), password="senha-forte-123"
     )
 
     await run_opportunity_matching_job({})
 
-    assert await _opportunities_of(owner.tenant_id) == []
+    assert await _opportunities_for_tender(owner.tenant_id, tender_id) == []
 
 
 async def test_job_skips_suspended_tenant() -> None:
-    await _create_tender("Aquisicao de material de escritorio urgente", "RN")
+    tender_id = await _create_tender("Aquisicao de material de escritorio urgente", "RN")
     tenant_id = await _create_tenant_with_profile(
         regions=["RN"],
         products=["material de escritorio"],
@@ -188,26 +195,29 @@ async def test_job_skips_suspended_tenant() -> None:
 
     await run_opportunity_matching_job({})
 
-    assert await _opportunities_of(tenant_id) == []
+    assert await _opportunities_for_tender(tenant_id, tender_id) == []
 
 
 async def test_job_skips_profile_without_declared_products() -> None:
-    await _create_tender("Aquisicao de material de escritorio comum", "RN")
+    tender_id = await _create_tender("Aquisicao de material de escritorio comum", "RN")
     tenant_id = await _create_tenant_with_profile(regions=["RN"], products=[])
 
     await run_opportunity_matching_job({})
 
-    assert await _opportunities_of(tenant_id) == []
+    assert await _opportunities_for_tender(tenant_id, tender_id) == []
 
 
 async def test_profile_without_regions_matches_any_uf() -> None:
-    await _create_tender("Aquisicao de material de escritorio para o almoxarifado", "AM")
+    tender_id = await _create_tender(
+        "Aquisicao de material de escritorio para o almoxarifado", "AM"
+    )
     tenant_id = await _create_tenant_with_profile(regions=[], products=["material de escritorio"])
 
     await run_opportunity_matching_job({})
 
-    opportunities = await _opportunities_of(tenant_id)
-    assert len(opportunities) >= 1
+    # AM nao esta em nenhuma lista de regioes declarada nos outros testes: o unico motivo de
+    # este tender casar e o perfil nao ter restricao de regiao.
+    assert len(await _opportunities_for_tender(tenant_id, tender_id)) == 1
 
     with tenant_scope(tenant_id):
         async with tenant_session() as session:
