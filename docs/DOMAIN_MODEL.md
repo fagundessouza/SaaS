@@ -51,6 +51,14 @@ Toda entidade abaixo é marcada como:
 código, não uma tabela dinâmica — YAGNI: não construir um motor de permissões customizável antes de
 haver demanda real).
 
+**`EmailIndex`** (GLOBAL, implementado na Fase 2) — índice auxiliar `email → user_id, tenant_id`,
+sem RLS. Existe exclusivamente para o primeiro passo do login (achar o tenant a partir do email,
+antes de qualquer contexto de tenant existir) — nunca é a fonte da verdade do perfil do usuário,
+só do `User` em si. Ver [ADR-0011](adr/0011-auth-bootstrap-global-lookup.md).
+
+**`RefreshToken`** (GLOBAL, implementado na Fase 2) — também sem RLS: sua segurança vem de ser um
+segredo de 256 bits comparado por hash, não de isolamento por linha. Ver ADR-0011.
+
 ### Billing
 
 **`Plan`** (GLOBAL — catálogo de planos oferecidos pela plataforma)

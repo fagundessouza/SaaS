@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     storage_secret_key: str
     storage_bucket: str
 
+    jwt_secret_key: str
+    jwt_access_token_expire_minutes: int = 15
+    jwt_refresh_token_expire_days: int = 30
+
+    cnpj_lookup_base_url: str = "https://brasilapi.com.br/api/cnpj/v1"
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -1,37 +1,51 @@
 """Dependencias compartilhadas da API.
 
-NOTA DE ESCOPO (Fase 1): a extracao de tenant aqui usa um header `X-Tenant-Id` validado contra a
-tabela `tenants`. Isso e um substituto deliberadamente simples para autenticacao real — a Fase 2
-(Auth + Multi-tenancy + Subscription) substitui isso por sessao/JWT com usuario autenticado.
-O contrato que importa desde ja (e que a Fase 2 preserva) e: toda rota tenant-scoped ativa
-`tenant_scope(tenant_id)` a partir de uma fonte confiavel do lado do servidor, nunca aceitando
-tenant_id livre em body/query.
+Substitui, na Fase 2, o placeholder de `X-Tenant-Id` da Fase 1 (ver git history de
+api/deps.py) por autenticacao real via JWT no header `Authorization: Bearer <token>`.
 """
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from uuid import UUID
 
-from fastapi import Header, HTTPException
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from core.db.session import system_session
+from core.auth.models import Role
+from core.auth.security import InvalidTokenError, decode_access_token
+from core.permissions.rbac import PermissionDeniedError, ensure_role
 from core.tenancy.context import tenant_scope
-from core.tenancy.models import Tenant
+
+_bearer_scheme = HTTPBearer(auto_error=True)
 
 
-async def require_tenant(
-    x_tenant_id: str = Header(..., alias="X-Tenant-Id"),
-) -> AsyncIterator[UUID]:
+@dataclass(frozen=True)
+class CurrentUser:
+    user_id: UUID
+    tenant_id: UUID
+    role: Role
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
+) -> AsyncIterator[CurrentUser]:
     try:
-        tenant_id = UUID(x_tenant_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="X-Tenant-Id invalido") from exc
+        claims = decode_access_token(credentials.credentials)
+    except InvalidTokenError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
 
-    async with system_session() as session:
-        tenant = await session.get(Tenant, tenant_id)
-        if tenant is None:
-            raise HTTPException(status_code=404, detail="Tenant nao encontrado")
+    with tenant_scope(claims.tenant_id):
+        yield CurrentUser(user_id=claims.user_id, tenant_id=claims.tenant_id, role=claims.role)
 
-    with tenant_scope(tenant_id):
-        yield tenant_id
+
+def require_role(*allowed: Role):  # type: ignore[no-untyped-def]
+    async def _dependency(current_user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+        try:
+            ensure_role(current_user.role, *allowed)
+        except PermissionDeniedError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        return current_user
+
+    return _dependency

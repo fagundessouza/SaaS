@@ -14,7 +14,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError
 
-from core.db import registry  # noqa: F401 — garante Base.metadata completo
+import model_registry  # noqa: F401 — garante Base.metadata completo
 from core.db.session import system_session, tenant_session
 from core.jobs.models import JobRun, JobStatus
 from core.tenancy.context import TenantContextError, tenant_scope

@@ -1,9 +1,9 @@
 # MicroSaaS de Inteligência em Licitações
 
 Plataforma B2B de inteligência operacional para empresas que participam de licitações públicas no
-Brasil. Status atual: **Fase 1 (Foundation/Core) concluída** — ver
-[docs/phase-reports/FASE_1_REPORT.md](docs/phase-reports/FASE_1_REPORT.md) para o checkpoint
-completo (implementado, testado, problemas encontrados e corrigidos, riscos, pendências).
+Brasil. Status atual: **Fase 2 (Auth + Multi-tenancy + Subscription) concluída** — ver
+[docs/phase-reports/](docs/phase-reports/) para os checkpoints completos (implementado, testado,
+problemas encontrados e corrigidos, riscos, pendências) de cada fase.
 
 Código do backend em [backend/](backend/README.md). A Fase 0 (Architecture Discovery) permanece
 como referência normativa da arquitetura — nenhuma decisão de código contradiz o que está lá sem
@@ -34,14 +34,14 @@ um ADR novo (ver [regra de não-reset](docs/IMPLEMENTATION_ROADMAP.md)).
     corte de MVP.
 11. [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — estrutura de repositório, convenções, ambiente,
     testes.
-12. [docs/adr/](docs/adr/) — decisões arquiteturais registradas (10 ADRs cobrindo os pontos em
-    aberto da especificação original).
+12. [docs/adr/](docs/adr/) — decisões arquiteturais registradas (11 ADRs cobrindo os pontos em
+    aberto da especificação original e decisões tomadas durante a implementação).
 13. [docs/phase-reports/](docs/phase-reports/) — checkpoint de cada fase concluída (seção 34 do
     prompt mestre): implementado, testado, problemas, riscos, decisões, pendências.
 
 ## Estado do projeto
 
 - ✅ Fase 0 — Architecture Discovery (documentação acima).
-- ✅ Fase 1 — Foundation/Core ([relatório](docs/phase-reports/FASE_1_REPORT.md), código em
-  [backend/](backend/)).
-- ⏳ Fase 2 — Auth + Multi-tenancy + Subscription (próxima).
+- ✅ Fase 1 — Foundation/Core ([relatório](docs/phase-reports/FASE_1_REPORT.md)).
+- ✅ Fase 2 — Auth + Multi-tenancy + Subscription ([relatório](docs/phase-reports/FASE_2_REPORT.md), código em [backend/](backend/README.md)).
+- ⏳ Fase 3 — Ingestion Engine (PNCP) (próxima).

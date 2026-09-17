@@ -9,9 +9,9 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
+import model_registry  # noqa: F401 — registra todo model em Base.metadata
 from alembic import context
 from core.config import get_settings
-from core.db import registry  # noqa: F401 — registra todo model em Base.metadata
 from core.db.base import Base
 
 load_dotenv()

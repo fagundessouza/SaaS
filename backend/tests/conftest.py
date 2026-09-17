@@ -9,6 +9,7 @@ para que o proximo teste os recrie contra o loop corrente.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import AsyncGenerator
 
 import pytest_asyncio
@@ -16,6 +17,21 @@ import pytest_asyncio
 from core.cache import redis_client as redis_client_module
 from core.db import session as db_session_module
 from core.jobs import enqueue as enqueue_module
+
+
+def unique_email(prefix: str = "user") -> str:
+    """E-mail garantidamente unico entre execucoes de teste — necessario porque EmailIndex.email
+    tem constraint de unicidade global (ver core/auth/models.py), e o Postgres de teste nao e
+    limpo entre rodadas de `pytest` (mesma infra do docker-compose de desenvolvimento)."""
+    return f"{prefix}-{uuid.uuid4().hex[:12]}@exemplo.com"
+
+
+def unique_cnpj() -> str:
+    """14 digitos numericos garantidamente unicos entre execucoes de teste — mesma razao de
+    `unique_email` (company_profiles.cnpj tambem e globalmente unico). Nao precisa ser um CNPJ
+    com digito verificador valido, so nao pode colidir."""
+    digits = uuid.uuid4().int
+    return "".join(str((digits >> (i * 4)) % 10) for i in range(14))
 
 
 @pytest_asyncio.fixture(autouse=True)
