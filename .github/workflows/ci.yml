@@ -1,0 +1,82 @@
+name: backend-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: licitacoes
+          POSTGRES_PASSWORD: licitacoes
+          POSTGRES_DB: licitacoes
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U licitacoes -d licitacoes"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://app_runtime:app_runtime_dev_password@localhost:5432/licitacoes
+      MIGRATIONS_DATABASE_URL: postgresql+asyncpg://licitacoes:licitacoes@localhost:5432/licitacoes
+      REDIS_URL: redis://localhost:6379/0
+      # MinIO nao roda neste pipeline ainda (services: do GitHub Actions nao aceita facilmente o
+      # CMD customizado que a imagem do MinIO exige) — nenhum teste automatizado hoje depende de
+      # storage real; isso e uma lacuna conhecida, nao uma omissao silenciosa. Ver
+      # docs/IMPLEMENTATION_ROADMAP.md quando um teste de storage for adicionado.
+      STORAGE_ENDPOINT_URL: http://localhost:9000
+      STORAGE_ACCESS_KEY: licitacoes
+      STORAGE_SECRET_KEY: licitacoes123
+      STORAGE_BUCKET: licitacoes-dev
+      LOG_LEVEL: INFO
+      ENVIRONMENT: ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Instalar dependencias
+        run: uv sync
+
+      - name: Criar papel de runtime sem privilegio de superusuario (ver ADR-0002)
+        run: |
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+          PGPASSWORD=licitacoes psql -h localhost -U licitacoes -d licitacoes \
+            -f ../ops/docker/initdb/01-app-role.sql
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Type check (mypy)
+        run: uv run mypy .
+
+      - name: Fronteiras de modulo (import-linter)
+        run: uv run lint-imports
+
+      - name: Migrations (upgrade)
+        run: uv run alembic upgrade head
+
+      - name: Migrations (reversibilidade)
+        run: |
+          uv run alembic downgrade base
+          uv run alembic upgrade head
+
+      - name: Testes
+        run: uv run pytest -v
