@@ -18,6 +18,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from api.deps import CurrentUser, get_current_user
+from domains.procurement.analysis.models import EvidenceKind, FindingSeverity, FindingStatus
+from domains.procurement.analysis.service import (
+    AnalysisNotFoundError,
+    CompanyProfileNotFoundError,
+    generate_analysis,
+    get_analysis_with_findings,
+)
+from domains.procurement.analysis.service import (
+    OpportunityNotFoundError as AnalysisOpportunityNotFoundError,
+)
 from domains.procurement.opportunities.models import OpportunityStatus
 from domains.procurement.opportunities.service import (
     InvalidStatusTransitionError,
@@ -26,6 +36,7 @@ from domains.procurement.opportunities.service import (
     list_opportunities,
     transition_status,
 )
+from domains.procurement.tenders.models import RequirementCategory
 
 router = APIRouter(prefix="/v1/opportunities", tags=["opportunities"])
 
@@ -99,6 +110,90 @@ async def change_status(
         compatibility={},
         confidence={},
     )
+
+
+# --- Analysis (dossie, Fase 8) ---
+
+
+class EvidenceResponse(BaseModel):
+    kind: EvidenceKind
+    description: str
+    document_version_id: UUID | None
+    section: str | None
+    page_start: int | None
+    page_end: int | None
+    excerpt: str | None
+    certificate_id: UUID | None
+    attestation_id: UUID | None
+
+    model_config = {"from_attributes": True}
+
+
+class FindingResponse(BaseModel):
+    id: UUID
+    category: RequirementCategory
+    status: FindingStatus
+    severity: FindingSeverity
+    summary: str
+    evidence: list[EvidenceResponse]
+
+
+class AnalysisResponse(BaseModel):
+    id: UUID
+    opportunity_id: UUID
+    generated_at: datetime
+    findings: list[FindingResponse]
+
+
+@router.get("/{opportunity_id}/analysis", response_model=AnalysisResponse)
+async def get_analysis(
+    opportunity_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+) -> AnalysisResponse:
+    try:
+        analysis, findings = await get_analysis_with_findings(opportunity_id)
+    except AnalysisNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Nenhuma analise gerada para esta oportunidade ainda "
+            "(POST neste mesmo endpoint para gerar)",
+        ) from exc
+
+    return AnalysisResponse(
+        id=analysis.id,
+        opportunity_id=analysis.opportunity_id,
+        generated_at=analysis.generated_at,
+        findings=[
+            FindingResponse(
+                id=finding.id,
+                category=finding.category,
+                status=finding.status,
+                severity=finding.severity,
+                summary=finding.summary,
+                evidence=[EvidenceResponse.model_validate(e) for e in evidence],
+            )
+            for finding, evidence in findings
+        ],
+    )
+
+
+@router.post("/{opportunity_id}/analysis", response_model=AnalysisResponse, status_code=201)
+async def create_analysis(
+    opportunity_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+) -> AnalysisResponse:
+    """Gera (ou regenera, substituindo a anterior — ver domains/procurement/analysis/service.py)
+    o dossie desta Opportunity. Nunca automatico: so dispara quando o usuario pede, aqui."""
+    try:
+        await generate_analysis(opportunity_id)
+    except AnalysisOpportunityNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Oportunidade nao encontrada") from exc
+    except CompanyProfileNotFoundError as exc:
+        raise HTTPException(
+            status_code=422, detail="CompanyProfile do tenant nao encontrado"
+        ) from exc
+
+    return await get_analysis(opportunity_id, current_user)
 
 
 @router.patch("/{opportunity_id}/assignee", response_model=OpportunityResponse)

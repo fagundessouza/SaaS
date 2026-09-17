@@ -24,6 +24,23 @@ e `ai_platform/retrieval`: chunking estrutural do texto já extraído (Fase 4), 
 (fastembed, sem GPU) e indexação/busca semântica no Qdrant. Todo `DocumentVersion` processado com
 sucesso é automaticamente indexado.
 
+Fase 6 (Procurement Domain) adicionou `TenderItem` (itens/lotes do edital — o PNCP já entrega
+estruturado, regra pura) e `Requirement` (requisito de habilitação extraído do texto já indexado
+— regra sobre vocabulário de seção + classificação por embedding, sem LLM). Todo `TenderDocument`
+processado gera automaticamente seus `Requirement`.
+
+Fase 7 (Opportunity Engine) adicionou `domains/procurement/opportunities`: funil em duas etapas
+(região + palavra-chave por regra determinística, similaridade semântica só quando a regra não
+bate) que decide se um `Tender` vira uma `Opportunity` para um tenant, e por quê — `compatibility`
+e `confidence` sempre decompostos, nunca um score único. Limiar semântico calibrado contra 100
+editais reais do PNCP (ver [FASE_7_REPORT](../docs/phase-reports/FASE_7_REPORT.md)).
+
+Fase 8 (Analysis Engine) adicionou `domains/procurement/companies` (`Certificate`/`Attestation`,
+o que o tenant declara ter) e `domains/procurement/analysis` (`Analysis`/`Finding`/`Evidence`):
+cruza cada `Requirement` do edital contra `Certificate` (regra — categoria + validade) ou
+`Attestation` (embedding, só para categoria técnica) e gera um dossiê auditável, nunca automático
+— só quando o usuário pede via `POST /v1/opportunities/{id}/analysis`.
+
 ## Subindo o ambiente local
 
 ```bash
@@ -193,18 +210,25 @@ Existe: `core/tenancy`, `core/events` (outbox), `core/jobs` (fila Arq), `core/st
 `core/cache` (Redis), `core/observability` (logging + métricas), `core/auth` (JWT + refresh token
 + EmailIndex — ver [ADR-0011](../docs/adr/0011-auth-bootstrap-global-lookup.md)),
 `core/permissions` (RBAC), `core/billing` (Plan/Subscription, sem gateway de pagamento),
-`domains/procurement/companies` (CompanyProfile + enriquecimento por CNPJ),
-`domains/procurement/tenders` (Tender/TenderVersion/TenderDocument), `ingestion/` (conector PNCP
-+ pipeline), `ai_platform/documents` (Document/DocumentVersion, extração nativa + OCR) e
-`ai_platform/chunking`/`embeddings`/`retrieval` (chunking estrutural, embeddings locais, busca
-semântica no Qdrant). RLS aplicado e testado em toda tabela `TENANT` (`job_runs`, `users`,
-`subscriptions`, `company_profiles`) — `tenders`/`tender_versions`/`tender_documents`/`documents`/
-`document_versions` são GLOBAL, sem RLS; chunks vivem só no Qdrant (não duplicados em Postgres).
+`domains/procurement/companies` (CompanyProfile + enriquecimento por CNPJ + Certificate/
+Attestation), `domains/procurement/tenders` (Tender/TenderVersion/TenderDocument/TenderItem/
+Requirement), `domains/procurement/opportunities` (Opportunity/OpportunityMatch, funil
+determinístico + semântico), `domains/procurement/analysis` (Analysis/Finding/Evidence, dossiê
+sob demanda), `ingestion/` (conector PNCP + pipeline), `ai_platform/documents`
+(Document/DocumentVersion, extração nativa + OCR) e `ai_platform/chunking`/`embeddings`/
+`retrieval` (chunking estrutural, embeddings locais, busca semântica no Qdrant). RLS aplicado e
+testado em toda tabela `TENANT` (`job_runs`, `users`, `subscriptions`, `company_profiles`,
+`certificates`, `attestations`, `opportunities`, `opportunity_matches`, `analyses`, `findings`,
+`evidences`) — `tenders`/`tender_versions`/`tender_documents`/`tender_items`/`requirements`/
+`documents`/`document_versions` são GLOBAL, sem RLS; chunks vivem só no Qdrant (não duplicados em
+Postgres).
 
-Não existe ainda: `Requirement`/`TenderItem` extraídos estruturalmente do texto processado,
-`opportunities`/`analysis` (Fase 6/7/8 — nada ainda consome `low_extraction_confidence` para
-bloquear conclusão de alto risco, porque não há conclusão nenhuma sendo gerada ainda), reranking
-(deliberadamente fora do escopo do retrieval básico, ver ADR-0007 — só entra em Analysis, Fase 8),
-`ai_platform/llm`/`agents` (Fase 9, Assistente), frontend, envio de e-mail de convite/verificação
-(fica para o Notification Engine, Fase 10 — hoje o owner/admin já cria o usuário com senha
-definida, sem fluxo de confirmação por e-mail).
+Não existe ainda: análise jurídica avançada e Deterministic Pricing Engine (Fase 12 —
+`low_extraction_confidence` já é propagado até `Finding` desde a Fase 8, mas ainda nenhum
+consumidor bloqueia uma conclusão de alto risco por causa dela, porque não há conclusão jurídica/
+de preço sendo gerada ainda), `CertificateValidationLog`/verificação automática de certidão
+contra fonte externa (ver PENDÊNCIAS da Fase 8), reranking (deliberadamente fora do escopo do
+retrieval básico, ver ADR-0007 — só entra em Analysis avançada, Fase 12), `ai_platform/llm`/
+`agents` (Fase 9, Assistente), frontend, envio de e-mail de convite/verificação (fica para o
+Notification Engine, Fase 10 — hoje o owner/admin já cria o usuário com senha definida, sem fluxo
+de confirmação por e-mail).

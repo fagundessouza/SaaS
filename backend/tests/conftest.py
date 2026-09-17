@@ -15,14 +15,19 @@ preso a nenhum event loop, e recarrega-lo a cada teste custaria ~15s por teste s
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from collections.abc import AsyncGenerator
 
 import pytest
 import pytest_asyncio
+from dotenv import load_dotenv
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from ai_platform.retrieval import client as qdrant_client_module
 from core.cache import redis_client as redis_client_module
+from core.config import get_settings
 from core.db import session as db_session_module
 from core.jobs import enqueue as enqueue_module
 from core.storage.client import get_storage_client
@@ -86,6 +91,44 @@ def _reset_knowledge_collection() -> None:
 
     asyncio.run(_reset())
     qdrant_client_module._client = None
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _reset_accumulating_tables() -> None:
+    """Mesma razao de `_reset_knowledge_collection`, agora para o Postgres: como nenhuma tabela
+    e limpa entre execucoes de `pytest` neste ambiente de dev, jobs que varrem a base inteira
+    (ex.: `run_opportunity_matching_job`, O(tenants x tenders) — ver
+    domains/procurement/opportunities/jobs.py) ficam cada vez mais lentos e eventualmente
+    flaky/lentos o bastante para timeout, conforme a sessao de desenvolvimento acumula
+    tenants/tenders de testes anteriores. Achado na Fase 8, depois de um dia inteiro de testes
+    acumular milhares de linhas e `test_opportunity_matching_job.py` comecar a falhar de forma
+    inconsistente (testes diferentes falhando a cada rodada — assinatura classica de lentidao
+    por volume, nao de bug logico).
+
+    `TRUNCATE ... CASCADE` em `tenants` e `tenders` (as duas raizes de acumulo — toda tabela
+    TENANT pendura de `tenants` via FK, toda tabela de conteudo de edital pendura de `tenders`)
+    limpa a arvore inteira de uma vez, uma unica vez por sessao de pytest. `documents`/
+    `document_versions` (Document Intelligence, Fase 4) nao sao tocados — nao sao dependentes de
+    `tenders` no grafo de FK (so referenciados por ele), e sozinhos nao causam a explosao
+    combinatoria que motivou este fixture.
+
+    Roda via engine separada com `MIGRATIONS_DATABASE_URL` (usuario `licitacoes`, superusuario)
+    porque `app_runtime` (usado por `tenant_session`/`system_session`) tem GRANT de
+    SELECT/INSERT/UPDATE/DELETE mas nao de TRUNCATE (ver ops/docker/initdb/01-app-role.sql) —
+    mesma engine que as migrations usam, ver alembic/env.py."""
+
+    async def _reset() -> None:
+        # `Settings` (pydantic-settings) le .env por conta propria, sem popular os.environ —
+        # `load_dotenv()` e o que faz `MIGRATIONS_DATABASE_URL` aparecer aqui, mesmo padrao de
+        # alembic/env.py (unico outro lugar que precisa do papel superusuario `licitacoes`).
+        load_dotenv()
+        url = os.environ.get("MIGRATIONS_DATABASE_URL") or get_settings().database_url
+        engine = create_async_engine(url)
+        async with engine.begin() as conn:
+            await conn.execute(text("TRUNCATE TABLE tenants, tenders CASCADE"))
+        await engine.dispose()
+
+    asyncio.run(_reset())
 
 
 @pytest_asyncio.fixture(autouse=True)

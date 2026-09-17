@@ -1,7 +1,7 @@
 # MicroSaaS de Inteligência em Licitações
 
 Plataforma B2B de inteligência operacional para empresas que participam de licitações públicas no
-Brasil. Status atual: **Fase 5 (Knowledge / RAG — Global Layer) concluída** — ver
+Brasil. Status atual: **Fase 8 (Analysis Engine) concluída** — ver
 [docs/phase-reports/](docs/phase-reports/) para os checkpoints completos (implementado, testado,
 problemas encontrados e corrigidos, riscos, pendências) de cada fase.
 
@@ -47,4 +47,7 @@ um ADR novo (ver [regra de não-reset](docs/IMPLEMENTATION_ROADMAP.md)).
 - ✅ Fase 3 — Ingestion Engine — PNCP ([relatório](docs/phase-reports/FASE_3_REPORT.md), código em [backend/](backend/README.md)).
 - ✅ Fase 4 — Document Intelligence ([relatório](docs/phase-reports/FASE_4_REPORT.md)).
 - ✅ Fase 5 — Knowledge / RAG — Global Layer ([relatório](docs/phase-reports/FASE_5_REPORT.md)).
-- ⏳ Fase 6 — Procurement Domain (próxima).
+- ✅ Fase 6 — Procurement Domain ([relatório](docs/phase-reports/FASE_6_REPORT.md)).
+- ✅ Fase 7 — Opportunity Engine ([relatório](docs/phase-reports/FASE_7_REPORT.md)).
+- ✅ Fase 8 — Analysis Engine ([relatório](docs/phase-reports/FASE_8_REPORT.md)).
+- ⏳ Fase 9 — Assistente (próxima).

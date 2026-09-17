@@ -56,6 +56,14 @@ class Settings(BaseSettings):
     # perder um edital por causa de um ciclo que falhou nao e.
     opportunity_matching_lookback_hours: int = 72
 
+    # Limiares de similaridade de cosseno entre um Requirement de categoria TECNICA e o
+    # `object_description` de um Attestation do tenant (Fase 8, ver
+    # domains/procurement/analysis/service.py). NAO calibrados contra dado real ainda (ao
+    # contrario de `opportunity_semantic_match_threshold` acima) — valores de engenharia,
+    # ponto de partida razoavel, ver PENDENCIAS do docs/phase-reports/FASE_8_REPORT.md.
+    analysis_attestation_met_threshold: float = 0.55
+    analysis_attestation_review_threshold: float = 0.40
+
 
 @lru_cache
 def get_settings() -> Settings:

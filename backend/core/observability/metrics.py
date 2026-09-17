@@ -128,3 +128,16 @@ opportunity_match_evaluations_total = Counter(
     "docs/00-CRITICAL_ANALYSIS.md, risco 5)",
     ["outcome"],
 )
+
+analyses_generated_total = Counter(
+    "analyses_generated_total",
+    "Total de Analysis geradas (dossie de uma Opportunity, Fase 8) — nunca automatica, so "
+    "quando o usuario aprofunda numa oportunidade especifica",
+)
+
+findings_by_status_total = Counter(
+    "findings_by_status_total",
+    "Total de Finding gerados por status (met/missing/expired/needs_review) — a distribuicao "
+    "e o sinal de quanto do funil de habilitacao ainda depende de documentacao pendente (Fase 8)",
+    ["status"],
+)
