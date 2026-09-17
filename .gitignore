@@ -24,6 +24,9 @@ ops/docker/volumes/
 minio_data/
 pg_data/
 
+# Dados de idioma do Tesseract (baixados localmente, nao versionados — ver backend/README.md)
+backend/.tessdata/
+
 # OS
 .DS_Store
 Thumbs.db

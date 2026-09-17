@@ -30,21 +30,34 @@ jobs:
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s --health-timeout 5s --health-retries 10
+      minio:
+        # bitnami/minio (nao minio/minio) de proposito: aceita configuracao 100% por variavel
+        # de ambiente e roda o servidor com o CMD default da imagem — a imagem oficial exige
+        # `server /data` como argumento, que o campo `services:` do GitHub Actions nao permite
+        # customizar. Ver tambem ops/docker/docker-compose.yml (usa minio/minio + command
+        # explicito, o que so e possivel fora do modelo de `services:`).
+        image: bitnami/minio:latest
+        env:
+          MINIO_ROOT_USER: licitacoes
+          MINIO_ROOT_PASSWORD: licitacoes123
+          MINIO_DEFAULT_BUCKETS: licitacoes-dev
+        ports: ["9000:9000"]
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/live || exit 1"
+          --health-interval 5s --health-timeout 5s --health-retries 10
 
     env:
       DATABASE_URL: postgresql+asyncpg://app_runtime:app_runtime_dev_password@localhost:5432/licitacoes
       MIGRATIONS_DATABASE_URL: postgresql+asyncpg://licitacoes:licitacoes@localhost:5432/licitacoes
       REDIS_URL: redis://localhost:6379/0
-      # MinIO nao roda neste pipeline ainda (services: do GitHub Actions nao aceita facilmente o
-      # CMD customizado que a imagem do MinIO exige) — nenhum teste automatizado hoje depende de
-      # storage real; isso e uma lacuna conhecida, nao uma omissao silenciosa. Ver
-      # docs/IMPLEMENTATION_ROADMAP.md quando um teste de storage for adicionado.
       STORAGE_ENDPOINT_URL: http://localhost:9000
       STORAGE_ACCESS_KEY: licitacoes
       STORAGE_SECRET_KEY: licitacoes123
       STORAGE_BUCKET: licitacoes-dev
       LOG_LEVEL: INFO
       ENVIRONMENT: ci
+      # Nunca usar fora de CI — ver core/config.py e .env.example para o padrao de dev local.
+      JWT_SECRET_KEY: ci-only-secret-never-use-in-production-1a2b3c4d5e6f
 
     steps:
       - uses: actions/checkout@v4
@@ -60,6 +73,9 @@ jobs:
           sudo apt-get update && sudo apt-get install -y postgresql-client
           PGPASSWORD=licitacoes psql -h localhost -U licitacoes -d licitacoes \
             -f ../ops/docker/initdb/01-app-role.sql
+
+      - name: Instalar Tesseract OCR (Fase 4 — Document Intelligence)
+        run: sudo apt-get install -y tesseract-ocr tesseract-ocr-por
 
       - name: Lint (ruff)
         run: uv run ruff check .

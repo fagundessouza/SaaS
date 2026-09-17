@@ -9,6 +9,16 @@ RBAC (owner/admin/member), billing mínimo (Plan/Subscription, sem gateway de pa
 primeiro pedaço de `domains/procurement`: `CompanyProfile` com enriquecimento automático por CNPJ
 (BrasilAPI).
 
+Fase 3 (Ingestion Engine — PNCP) adicionou `ingestion/` (conector do PNCP + pipeline de
+fetch/dedup/versionamento) e `domains/procurement/tenders` (`Tender`/`TenderVersion`/
+`TenderDocument`, GLOBAL, sem RLS). Um cron no worker busca editais novos a cada 30min.
+
+Fase 4 (Document Intelligence) adicionou `ai_platform/documents` — a primeira capacidade real de
+`ai_platform` (antes um pacote vazio): detecção de qualidade de extração nativa (pypdf), OCR real
+via Tesseract quando a camada de texto é insuficiente, e o Global Processing Cache
+(`Document`/`DocumentVersion` por `content_hash`, ver [ADR-0012](../docs/adr/0012-document-processing-cache.md)).
+Todo `TenderDocument` baixado é processado automaticamente.
+
 ## Subindo o ambiente local
 
 ```bash
@@ -37,6 +47,36 @@ uv run uvicorn api.main:app --reload
 #    ver "Por que backend/worker.py" abaixo.
 uv run arq worker.WorkerSettings
 ```
+
+### Tesseract (OCR, Fase 4)
+
+Necessário para o caminho de OCR do Document Intelligence — sem ele, documentos sem camada de
+texto nativa são marcados `UNUSABLE` em vez de processados (degrada de forma segura, não quebra).
+
+```bash
+# Windows (winget) — ajuste TESSERACT_CMD no .env para o caminho instalado
+winget install --id UB-Mannheim.TesseractOCR -e
+
+# Linux (Ubuntu/Debian)
+sudo apt-get install -y tesseract-ocr tesseract-ocr-por
+
+# macOS
+brew install tesseract tesseract-lang
+```
+
+Os arquivos de idioma português (`por.traineddata`) geralmente não vêm com a instalação Windows
+via winget — baixe manualmente e aponte `TESSDATA_DIR` no `.env` para a pasta:
+
+```bash
+mkdir -p .tessdata
+curl -sL -o .tessdata/por.traineddata https://github.com/tesseract-ocr/tessdata_fast/raw/main/por.traineddata
+# eng.traineddata e osd.traineddata tambem precisam estar em .tessdata/ — copie da instalacao
+# do Tesseract (ex.: "C:\Program Files\Tesseract-OCR\tessdata\") se `--tessdata-dir` substituir
+# o diretorio padrao inteiro.
+```
+
+Em Linux/CI, `tesseract-ocr-por` via apt já inclui o idioma no diretório padrão do sistema —
+normalmente não é preciso setar `TESSDATA_DIR` nesse caso (deixe em branco).
 
 > Nota: `ops/docker/initdb/` só é executado automaticamente pelo Postgres na primeira
 > inicialização de um volume vazio. Se o container já existia antes deste arquivo ser criado,
@@ -80,6 +120,27 @@ curl -s localhost:8000/v1/company-profile -H "Authorization: Bearer <ACCESS_TOKE
 Automatizado em `tests/security/test_tenant_isolation.py` (Fase 1: `job_runs`) e
 `tests/security/test_auth_isolation.py` (Fase 2: `users`, `company_profiles`, fim a fim via API).
 
+## Ingestão do PNCP
+
+O worker roda `run_pncp_ingestion_job` a cada 30min (cron), buscando editais das últimas 48h nas
+modalidades Pregão Eletrônico, Concorrência Eletrônica e Dispensa. `Tender`/`TenderVersion` são
+GLOBAL (sem tenant) — um edital publicado é informação pública. Dedup e versionamento são por
+`content_hash` do payload normalizado (mesmo edital reingerido sem mudança = `UNCHANGED`, edital
+retificado = nova `TenderVersion`). Ver [docs/phase-reports/FASE_3_REPORT.md](../docs/phase-reports/FASE_3_REPORT.md)
+para o histórico de verificação contra a API real (que esteve instável durante o desenvolvimento
+— a listagem foi confirmada campo a campo, o endpoint de documentos anexos ainda não).
+
+## Document Intelligence
+
+Todo `TenderDocument` baixado (ver seção acima) é processado automaticamente: se a camada de
+texto nativa do PDF é suficiente (`pypdf`), extrai direto; senão, renderiza cada página
+(`pypdfium2`) e roda OCR (Tesseract, português). O resultado vira uma `DocumentVersion` com
+`extraction_quality` real — nunca hardcoded — e `low_extraction_confidence=true` quando a
+qualidade é `LOW`/`UNUSABLE` (nenhum consumidor de análise existe ainda para respeitar essa
+flag — isso é Fase 8 — mas o dado já nasce correto). Documentos com o mesmo `content_hash`
+(mesmo PDF, tenders diferentes) são processados uma única vez (Global Processing Cache, ver
+[ADR-0012](../docs/adr/0012-document-processing-cache.md)).
+
 ## Comandos de verificação (checkpoint de fase, ver docs/DEVELOPMENT.md)
 
 ```bash
@@ -112,10 +173,16 @@ Existe: `core/tenancy`, `core/events` (outbox), `core/jobs` (fila Arq), `core/st
 `core/cache` (Redis), `core/observability` (logging + métricas), `core/auth` (JWT + refresh token
 + EmailIndex — ver [ADR-0011](../docs/adr/0011-auth-bootstrap-global-lookup.md)),
 `core/permissions` (RBAC), `core/billing` (Plan/Subscription, sem gateway de pagamento),
-`domains/procurement/companies` (CompanyProfile + enriquecimento por CNPJ). RLS aplicado e
-testado em toda tabela `TENANT` (`job_runs`, `users`, `subscriptions`, `company_profiles`).
+`domains/procurement/companies` (CompanyProfile + enriquecimento por CNPJ),
+`domains/procurement/tenders` (Tender/TenderVersion/TenderDocument), `ingestion/` (conector PNCP
++ pipeline) e `ai_platform/documents` (Document/DocumentVersion, extração nativa + OCR). RLS
+aplicado e testado em toda tabela `TENANT` (`job_runs`, `users`, `subscriptions`,
+`company_profiles`) — `tenders`/`tender_versions`/`tender_documents`/`documents`/
+`document_versions` são GLOBAL, sem RLS.
 
-Não existe ainda: qualquer outro domínio de `domains/procurement` (tenders, opportunities,
-analysis — Fase 6+), `ingestion/` (Fase 3), frontend, `ai_platform/` (Fase 5+), envio de e-mail de
-convite/verificação (fica para o Notification Engine, Fase 10 — hoje o owner/admin já cria o
-usuário com senha definida, sem fluxo de confirmação por e-mail).
+Não existe ainda: `Requirement`/`TenderItem` extraídos estruturalmente do texto processado,
+`opportunities`/`analysis` (Fase 6/7/8 — nada ainda consome `low_extraction_confidence` para
+bloquear conclusão de alto risco, porque não há conclusão nenhuma sendo gerada ainda), chunking/
+embeddings/retrieval (`ai_platform/chunking`, `.../embeddings` — Fase 5), frontend, envio de
+e-mail de convite/verificação (fica para o Notification Engine, Fase 10 — hoje o owner/admin já
+cria o usuário com senha definida, sem fluxo de confirmação por e-mail).

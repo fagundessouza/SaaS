@@ -1,7 +1,7 @@
 # MicroSaaS de Inteligência em Licitações
 
 Plataforma B2B de inteligência operacional para empresas que participam de licitações públicas no
-Brasil. Status atual: **Fase 2 (Auth + Multi-tenancy + Subscription) concluída** — ver
+Brasil. Status atual: **Fase 3 (Ingestion Engine — PNCP) concluída** — ver
 [docs/phase-reports/](docs/phase-reports/) para os checkpoints completos (implementado, testado,
 problemas encontrados e corrigidos, riscos, pendências) de cada fase.
 
@@ -43,5 +43,6 @@ um ADR novo (ver [regra de não-reset](docs/IMPLEMENTATION_ROADMAP.md)).
 
 - ✅ Fase 0 — Architecture Discovery (documentação acima).
 - ✅ Fase 1 — Foundation/Core ([relatório](docs/phase-reports/FASE_1_REPORT.md)).
-- ✅ Fase 2 — Auth + Multi-tenancy + Subscription ([relatório](docs/phase-reports/FASE_2_REPORT.md), código em [backend/](backend/README.md)).
-- ⏳ Fase 3 — Ingestion Engine (PNCP) (próxima).
+- ✅ Fase 2 — Auth + Multi-tenancy + Subscription ([relatório](docs/phase-reports/FASE_2_REPORT.md)).
+- ✅ Fase 3 — Ingestion Engine — PNCP ([relatório](docs/phase-reports/FASE_3_REPORT.md), código em [backend/](backend/README.md)).
+- ⏳ Fase 4 — Document Intelligence (próxima).

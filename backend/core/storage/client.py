@@ -1,7 +1,12 @@
-"""Abstracao de storage de objetos (MinIO/S3), com prefixo obrigatorio por tenant.
+"""Abstracao de storage de objetos (MinIO/S3).
 
-Nenhuma chave e aceita sem tenant_id explicito — mesma politica de "argumento obrigatorio, nunca
-filtro opcional" usada em core.tenancy e core.cache (ver ADR-0002).
+Dois espacos de chave, nunca misturados:
+- `put_object`/`get_object`/`generate_presigned_url`: dado de TENANT, prefixo `tenant/{tenant_id}/`
+  obrigatorio (mesma politica de "argumento obrigatorio, nunca filtro opcional" de core.tenancy e
+  core.cache — ver ADR-0002).
+- `put_global_object`/`get_global_object`: dado GLOBAL (ex.: documento de edital, publico por
+  natureza — ver docs/DOMAIN_MODEL.md), prefixo `global/`. Usado pela primeira vez em
+  domains/procurement/tenders (Fase 3).
 """
 
 from __future__ import annotations
@@ -17,6 +22,10 @@ from core.config import get_settings
 
 def _tenant_key(tenant_id: uuid.UUID, key: str) -> str:
     return f"tenant/{tenant_id}/{key}"
+
+
+def _global_key(key: str) -> str:
+    return f"global/{key}"
 
 
 class StorageClient:
@@ -58,6 +67,18 @@ class StorageClient:
             Params={"Bucket": self._bucket, "Key": full_key},
             ExpiresIn=expires_in,
         )
+
+    def put_global_object(self, key: str, body: bytes | BinaryIO, content_type: str) -> str:
+        full_key = _global_key(key)
+        self._client.put_object(
+            Bucket=self._bucket, Key=full_key, Body=body, ContentType=content_type
+        )
+        return full_key
+
+    def get_global_object(self, key: str) -> bytes:
+        full_key = _global_key(key)
+        response = self._client.get_object(Bucket=self._bucket, Key=full_key)
+        return response["Body"].read()
 
 
 _storage_client: StorageClient | None = None
