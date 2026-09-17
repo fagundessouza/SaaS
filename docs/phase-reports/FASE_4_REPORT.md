@@ -124,9 +124,13 @@ passar `--tessdata-dir` como config string, que se mostrou frágil com paths do 
   com rigor). Ajustar quando houver volume real de editais do PNCP passando pelo pipeline
   (Fase 3 já traz `TenderDocument`, mas o endpoint de anexos do PNCP ainda não foi confirmado ao
   vivo — ver pendência 1 do relatório da Fase 3).
-- CI atualizado mas **nunca executado de fato** (repositório remoto vazio até o momento) — as
-  correções desta fase (JWT_SECRET_KEY, MinIO via bitnami) são educadas, não verificadas por uma
-  execução real do GitHub Actions.
+- ~~CI atualizado mas nunca executado de fato~~ — **atualizado**: o primeiro push ao GitHub
+  (via PR #1) rodou o CI de verdade e revelou mais um problema real, corrigido na hora:
+  `bitnami/minio:latest` não existe mais (a Bitnami parou de publicar essa tag publicamente —
+  `manifest unknown`). Corrigido subindo o MinIO via `docker run` direto (mesma imagem
+  `quay.io/minio/minio` usada localmente) em vez do bloco `services:`. Após a correção, o CI
+  passou de ponta a ponta: lint, mypy, import-linter, migrations e **55/55 testes** contra
+  Postgres/Redis/MinIO reais no runner do GitHub Actions.
 
 ## DECISÕES
 
@@ -146,8 +150,6 @@ passar `--tessdata-dir` como config string, que se mostrou frágil com paths do 
 2. Detecção/correção de rotação de página e análise de layout/tabela — candidatos a
    endurecimento do pipeline quando houver evidência de que documentos reais precisam disso
    (não antecipar sem essa evidência, ver seção 30 do prompt mestre).
-3. Verificar o workflow de CI atualizado com uma execução real assim que houver um primeiro push
-   ao GitHub (repositório remoto vazio até aqui).
 
 ## PRÓXIMA FASE
 
