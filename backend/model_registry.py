@@ -17,6 +17,7 @@ from core.events import models as _events_models  # noqa: F401
 from core.jobs import models as _jobs_models  # noqa: F401
 from core.notifications import models as _notification_models  # noqa: F401
 from core.tenancy import models as _tenancy_models  # noqa: F401
+from domains.assistant import models as _assistant_models  # noqa: F401
 from domains.procurement.analysis import models as _analysis_models  # noqa: F401
 from domains.procurement.companies import models as _company_models  # noqa: F401
 from domains.procurement.opportunities import models as _opportunity_models  # noqa: F401

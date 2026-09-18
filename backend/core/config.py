@@ -83,6 +83,20 @@ class Settings(BaseSettings):
     vapid_public_key: str | None = None
     vapid_subject: str = "mailto:contato@licitacoes.local"
 
+    # Assistente (Fase 9). Provider plugavel de proposito (ver ADR-0003 e
+    # ai_platform/llm/provider.py): "anthropic" (API externa) ou "openai_compatible" (cobre a
+    # propria OpenAI E qualquer servidor self-hosted que fale o mesmo protocolo — Ollama, vLLM,
+    # LM Studio etc.). Trocar de provider, de modelo, ou de um modelo de 2B rodando localmente
+    # para um de 128B contratado numa nuvem depois nao exige mudar codigo, so estas variaveis.
+    llm_provider: str = "openai_compatible"
+    llm_model_name: str = ""
+    llm_api_key: str | None = None
+    # Self-hosted (Ollama, vLLM, LM Studio, ...) normalmente expoe o endpoint compativel com
+    # OpenAI em algo como http://localhost:11434/v1 — troque para a URL real de onde o modelo
+    # estiver rodando, ou para https://api.openai.com/v1 para usar a nuvem da OpenAI.
+    llm_base_url: str = "http://localhost:11434/v1"
+    llm_max_tokens: int = 1024
+
 
 @lru_cache
 def get_settings() -> Settings:

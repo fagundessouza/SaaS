@@ -41,14 +41,17 @@ cruza cada `Requirement` do edital contra `Certificate` (regra — categoria + v
 `Attestation` (embedding, só para categoria técnica) e gera um dossiê auditável, nunca automático
 — só quando o usuário pede via `POST /v1/opportunities/{id}/analysis`.
 
-Fase 9 (Assistente) **adiada** — exige provedor de LLM real e frontend, nenhum dos dois decidido
-ainda (ver [FASE_10_REPORT](../docs/phase-reports/FASE_10_REPORT.md), seção DECISÕES).
-
 Fase 10 (Event + Notification Engine) adicionou `core/notifications` (canais de e-mail/Web Push,
 Alert/Notification/preferências) e `domains/notifications` (roteia evento → quem notificar,
 consumindo o Redis Stream do outbox já existente desde a Fase 1). Canais "console" (sem
 SMTP/VAPID configurados) são implementações reais, não stubs — mesmo raciocínio de
 `core/billing` desde a Fase 2.
+
+Fase 9 (Assistente), retomada depois de adiada: `ai_platform/llm` — provider de LLM **plugável**
+(`LLMProvider` Protocol, ADR-0003), self-hosted (Ollama/vLLM/LM Studio, qualquer tamanho de
+modelo) ou nuvem (Anthropic/OpenAI), trocável só por configuração. `domains/assistant` executa 3
+ações determinísticas ("o que está faltando?", "entender edital", "explicar requisito") citando
+evidência real do dossiê (Fase 8) — o LLM só sintetiza linguagem natural sobre fatos já corretos.
 
 ## Subindo o ambiente local
 
@@ -204,6 +207,23 @@ worker) → vira `Alert` + uma `Notification` por canal habilitado (e-mail, Web 
 notificação em vez de enviar de verdade — implementação real, não um stub (mesmo raciocínio de
 `core/billing` desde a Fase 2).
 
+## Assistente
+
+```bash
+curl -s -X POST localhost:8000/v1/assistant/actions \
+  -H "Authorization: Bearer <ACCESS_TOKEN>" -H "Content-Type: application/json" \
+  -d '{"opportunity_id": "<OPPORTUNITY_ID>", "action": "missing_requirements"}'
+```
+
+Ações disponíveis: `missing_requirements` ("o que está faltando?"), `understand_tender`
+("entender edital"), `explain_requirement` (exige `requirement_id` também). Cada uma monta o
+contexto por query determinística (nunca aceita do cliente) e usa `ai_platform/llm` só para
+sintetizar a resposta em linguagem natural — a citação (`evidence_refs`) vem sempre do banco, não
+do texto do modelo. Sem `LLM_MODEL_NAME` configurado (padrão local), o endpoint responde `503`
+de forma explícita, nunca finge uma resposta. Provider trocável por configuração
+(`LLM_PROVIDER=anthropic` ou `openai_compatible` — este último cobre tanto a nuvem da OpenAI
+quanto qualquer servidor self-hosted, ver `.env.example`).
+
 ## Comandos de verificação (checkpoint de fase, ver docs/DEVELOPMENT.md)
 
 ```bash
@@ -247,20 +267,25 @@ OCR) e `ai_platform/chunking`/`embeddings`/`retrieval` (chunking estrutural, emb
 busca semântica no Qdrant). RLS aplicado e testado em toda tabela `TENANT` (`job_runs`, `users`,
 `subscriptions`, `company_profiles`, `certificates`, `attestations`, `opportunities`,
 `opportunity_matches`, `analyses`, `findings`, `evidences`, `alerts`, `notifications`,
-`notification_preferences`, `push_subscriptions`) — `tenders`/`tender_versions`/
-`tender_documents`/`tender_items`/`requirements`/`documents`/`document_versions` são GLOBAL, sem
-RLS; chunks vivem só no Qdrant (não duplicados em Postgres); `domain_events` (outbox) também não
-tem RLS — é infraestrutura interna despachada por um worker de confiança, não dado de tenant.
+`notification_preferences`, `push_subscriptions`, `assistant_sessions`, `assistant_messages`) —
+`tenders`/`tender_versions`/`tender_documents`/`tender_items`/`requirements`/`documents`/
+`document_versions` são GLOBAL, sem RLS; chunks vivem só no Qdrant (não duplicados em Postgres);
+`domain_events` (outbox) também não tem RLS — é infraestrutura interna despachada por um worker
+de confiança, não dado de tenant. `ai_platform/llm` (Fase 9) existe — provider plugável
+(self-hosted ou nuvem, ver ADR-0003) — mas sem credencial real configurada em nenhum ambiente
+ainda (ver PENDÊNCIAS da Fase 9).
 
-Não existe ainda: `ai_platform/llm`/`agents` (Fase 9, Assistente — **adiada nesta sessão**, exige
-decisão de provedor de LLM e de frontend), frontend (Fase 11 — idem), análise jurídica avançada e
-Deterministic Pricing Engine (Fase 12 — `low_extraction_confidence` já é propagado até `Finding`
-desde a Fase 8, mas ainda nenhum consumidor bloqueia uma conclusão de alto risco por causa dela,
-porque não há conclusão jurídica/de preço sendo gerada ainda), `CertificateValidationLog`/
-verificação automática de certidão contra fonte externa (ver PENDÊNCIAS da Fase 8), reranking
-(deliberadamente fora do escopo do retrieval básico, ver ADR-0007 — só entra em Analysis
-avançada, Fase 12), envio de e-mail de convite/verificação de usuário (o Notification Engine da
-Fase 10 existe, mas ninguém ainda dispara esse fluxo especificamente — hoje o owner/admin já cria
-o usuário com senha definida), `CertificateExpiring` sem produtor real (falta o job agendado
-diário, ver PENDÊNCIAS da Fase 10), canais SMTP/Web Push reais sem credencial configurada em
-nenhum ambiente ainda (só a implementação "console" foi exercitada).
+Não existe ainda: frontend (Fase 11 — adiado por decisão do usuário), `ai_platform/agents`
+(memória de longo prazo do assistente entre sessões — depende de `TenantKnowledge`/`Feedback`/
+`Decision`, Fase 14), análise jurídica avançada e Deterministic Pricing Engine (Fase 12 —
+bloqueada por exigir base jurídica curada real e um caso de cliente piloto real, nenhum dos dois
+disponível; `low_extraction_confidence` já é propagado até `Finding` desde a Fase 8, mas ainda
+nenhum consumidor bloqueia uma conclusão de alto risco por causa dela, porque não há conclusão
+jurídica/de preço sendo gerada ainda), Competitive Intelligence (Fase 13 — mesmo bloqueio de
+dado real de cliente piloto), `CertificateValidationLog`/verificação automática de certidão
+contra fonte externa (ver PENDÊNCIAS da Fase 8), reranking (deliberadamente fora do escopo do
+retrieval básico, ver ADR-0007 — só entra em Analysis avançada, Fase 12), envio de e-mail de
+convite/verificação de usuário (o Notification Engine da Fase 10 existe, mas ninguém ainda
+dispara esse fluxo especificamente), `CertificateExpiring` sem produtor real (falta o job
+agendado diário, ver PENDÊNCIAS da Fase 10), canais SMTP/Web Push/LLM reais sem credencial
+configurada em nenhum ambiente ainda (só as implementações "console"/mockadas foram exercitadas).

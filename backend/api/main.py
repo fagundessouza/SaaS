@@ -16,6 +16,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 import model_registry  # noqa: F401 — registra todo model em Base.metadata
 from api.v1 import (
+    assistant,
     auth,
     companies,
     health,
@@ -84,3 +85,4 @@ app.include_router(knowledge.router)
 app.include_router(tenders.router)
 app.include_router(opportunities.router)
 app.include_router(notifications.router)
+app.include_router(assistant.router)

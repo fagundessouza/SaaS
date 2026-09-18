@@ -159,3 +159,9 @@ notification_events_processed_total = Counter(
     "Total de eventos de dominio consumidos do Redis Stream pelo Notification Engine (Fase 10)",
     ["topic"],
 )
+
+assistant_actions_total = Counter(
+    "assistant_actions_total",
+    "Total de acoes do Assistente executadas com sucesso, por acao (Fase 9)",
+    ["action"],
+)
