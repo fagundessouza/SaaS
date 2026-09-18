@@ -5,17 +5,53 @@ publicado e informacao publica, ver DOMAIN_MODEL.md), sem escopo de tenant.
 
 from __future__ import annotations
 
+from datetime import date, datetime
+from decimal import Decimal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 
 from api.deps import CurrentUser, get_current_user
 from core.db.session import system_session
-from domains.procurement.tenders.models import Requirement, RequirementCategory, TenderItem
+from domains.procurement.tenders.models import (
+    Requirement,
+    RequirementCategory,
+    Tender,
+    TenderItem,
+)
 
 router = APIRouter(prefix="/v1/tenders", tags=["tenders"])
+
+
+class TenderResponse(BaseModel):
+    id: UUID
+    orgao_nome: str
+    unidade_nome: str | None
+    uf: str | None
+    municipio: str | None
+    modalidade: str
+    objeto: str
+    valor_estimado: Decimal | None
+    data_publicacao: date | None
+    data_abertura_proposta: datetime | None
+    data_encerramento_proposta: datetime | None
+    situacao: str | None
+
+    model_config = {"from_attributes": True}
+
+
+@router.get("/{tender_id}", response_model=TenderResponse)
+async def get_tender(
+    tender_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+) -> TenderResponse:
+    async with system_session() as session:
+        tender = await session.get(Tender, tender_id)
+        if tender is None:
+            raise HTTPException(status_code=404, detail="Edital não encontrado")
+        return TenderResponse.model_validate(tender)
 
 
 class TenderItemResponse(BaseModel):

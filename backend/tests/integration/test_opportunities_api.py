@@ -105,6 +105,33 @@ async def test_list_returns_opportunity_with_decomposed_match(client: httpx.Asyn
     assert "score" not in row
 
 
+async def test_get_single_opportunity_returns_decomposed_match(
+    client: httpx.AsyncClient,
+) -> None:
+    token, _, opportunity_id = await _signup_with_opportunity(client)
+
+    response = await client.get(
+        f"/v1/opportunities/{opportunity_id}", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == str(opportunity_id)
+    assert body["compatibility"]["region"]["matched"] is True
+
+
+async def test_get_single_opportunity_returns_404_for_unknown_id(
+    client: httpx.AsyncClient,
+) -> None:
+    token, _, _ = await _signup_with_opportunity(client)
+
+    response = await client.get(
+        f"/v1/opportunities/{uuid.uuid4()}", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 404
+
+
 async def test_valid_status_transition_is_applied(client: httpx.AsyncClient) -> None:
     token, _, opportunity_id = await _signup_with_opportunity(client)
 

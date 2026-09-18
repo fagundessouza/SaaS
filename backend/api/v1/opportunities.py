@@ -33,6 +33,7 @@ from domains.procurement.opportunities.service import (
     InvalidStatusTransitionError,
     OpportunityNotFoundError,
     assign_opportunity,
+    get_opportunity,
     list_opportunities,
     transition_status,
 )
@@ -82,6 +83,27 @@ async def list_radar(
         )
         for opportunity, match in rows
     ]
+
+
+@router.get("/{opportunity_id}", response_model=OpportunityResponse)
+async def get_radar_item(
+    opportunity_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+) -> OpportunityResponse:
+    try:
+        opportunity, match = await get_opportunity(opportunity_id)
+    except OpportunityNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Oportunidade nao encontrada") from exc
+
+    return OpportunityResponse(
+        id=opportunity.id,
+        tender_id=opportunity.tender_id,
+        status=opportunity.status,
+        assigned_to_user_id=opportunity.assigned_to_user_id,
+        created_at=opportunity.created_at,
+        compatibility=match.compatibility if match is not None else {},
+        confidence=match.confidence if match is not None else {},
+    )
 
 
 @router.patch("/{opportunity_id}/status", response_model=OpportunityResponse)

@@ -275,8 +275,12 @@ de confiança, não dado de tenant. `ai_platform/llm` (Fase 9) existe — provid
 (self-hosted ou nuvem, ver ADR-0003) — mas sem credencial real configurada em nenhum ambiente
 ainda (ver PENDÊNCIAS da Fase 9).
 
-Não existe ainda: frontend (Fase 11 — adiado por decisão do usuário), `ai_platform/agents`
-(memória de longo prazo do assistente entre sessões — depende de `TenantKnowledge`/`Feedback`/
+Frontend (Fase 11) existe em `frontend/` — Next.js/React/TypeScript/Tailwind, JWT nunca trafega
+para o navegador (Server Components + Route Handlers, cookie httpOnly), ver
+[FASE_11_REPORT.md](../docs/phase-reports/FASE_11_REPORT.md).
+
+Não existe ainda: `ai_platform/agents` (memória de longo prazo do assistente entre sessões —
+depende de `TenantKnowledge`/`Feedback`/
 `Decision`, Fase 14), análise jurídica avançada e Deterministic Pricing Engine (Fase 12 —
 bloqueada por exigir base jurídica curada real e um caso de cliente piloto real, nenhum dos dois
 disponível; `low_extraction_confidence` já é propagado até `Finding` desde a Fase 8, mas ainda

@@ -1,11 +1,12 @@
 # MicroSaaS de Inteligência em Licitações
 
 Plataforma B2B de inteligência operacional para empresas que participam de licitações públicas no
-Brasil. Status atual: **Fase 9 (Assistente) concluída** — ver
+Brasil. Status atual: **Fase 11 (Frontend) concluída** — ver
 [docs/phase-reports/](docs/phase-reports/) para os checkpoints completos (implementado, testado,
 problemas encontrados e corrigidos, riscos, pendências) de cada fase.
 
-Código do backend em [backend/](backend/README.md). A Fase 0 (Architecture Discovery) permanece
+Código do backend em [backend/](backend/README.md), frontend em
+[frontend/](docs/phase-reports/FASE_11_REPORT.md). A Fase 0 (Architecture Discovery) permanece
 como referência normativa da arquitetura — nenhuma decisão de código contradiz o que está lá sem
 um ADR novo (ver [regra de não-reset](docs/IMPLEMENTATION_ROADMAP.md)).
 
@@ -53,7 +54,8 @@ um ADR novo (ver [regra de não-reset](docs/IMPLEMENTATION_ROADMAP.md)).
 - ✅ Fase 9 — Assistente ([relatório](docs/phase-reports/FASE_9_REPORT.md)) — provider de LLM
   plugável (self-hosted ou nuvem, escolha do usuário), retomada após decisão explícita.
 - ✅ Fase 10 — Event + Notification Engine ([relatório](docs/phase-reports/FASE_10_REPORT.md)).
-- ⏳ Fase 11 — Frontend (adiada por decisão do usuário — próxima quando houver decisão de stack).
+- ✅ Fase 11 — Frontend ([relatório](docs/phase-reports/FASE_11_REPORT.md)) — Next.js/React/
+  TypeScript/Tailwind, verificado ao vivo contra o backend real, sem dado mockado.
 - ⏸️ Fase 12 — Legal Intelligence + Pricing Engine (bloqueada: exige base jurídica curada real e
   caso de cliente piloto real, nenhum dos dois disponível).
 - ⏸️ Fase 13 — Competitive Intelligence (mesmo bloqueio de dado real de cliente piloto).

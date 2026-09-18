@@ -169,6 +169,23 @@ async def assign_opportunity(
         return opportunity
 
 
+async def get_opportunity(
+    opportunity_id: uuid.UUID,
+) -> tuple[Opportunity, OpportunityMatch | None]:
+    """Uma Opportunity especifica do tenant corrente, com o match que a justifica (se houver —
+    ver docstring de OpportunityMatch sobre por que pode ser None). Escopo de tenant vem do RLS,
+    mesma disciplina de `list_opportunities`."""
+    async with tenant_session() as session:
+        opportunity = await session.get(Opportunity, opportunity_id)
+        if opportunity is None:
+            raise OpportunityNotFoundError(str(opportunity_id))
+
+        match_result = await session.execute(
+            select(OpportunityMatch).where(OpportunityMatch.opportunity_id == opportunity_id)
+        )
+        return opportunity, match_result.scalar_one_or_none()
+
+
 async def list_opportunities(
     *, status: OpportunityStatus | None = None, only_active: bool = False
 ) -> list[tuple[Opportunity, OpportunityMatch | None]]:

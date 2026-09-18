@@ -58,6 +58,37 @@ async def _create_tender() -> uuid.UUID:
         return tender.id
 
 
+async def test_get_tender_requires_authentication(client: httpx.AsyncClient) -> None:
+    response = await client.get(f"/v1/tenders/{uuid.uuid4()}")
+    assert response.status_code == 401
+
+
+async def test_get_tender_returns_404_for_unknown_tender(client: httpx.AsyncClient) -> None:
+    access_token = await _signup(client)
+
+    response = await client.get(
+        f"/v1/tenders/{uuid.uuid4()}", headers={"Authorization": f"Bearer {access_token}"}
+    )
+
+    assert response.status_code == 404
+
+
+async def test_get_tender_returns_stored_fields(client: httpx.AsyncClient) -> None:
+    tender_id = await _create_tender()
+    access_token = await _signup(client)
+
+    response = await client.get(
+        f"/v1/tenders/{tender_id}", headers={"Authorization": f"Bearer {access_token}"}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == str(tender_id)
+    assert body["orgao_nome"] == "Prefeitura Exemplo"
+    assert body["modalidade"] == "Pregao Eletronico"
+    assert body["objeto"] == "Objeto de teste"
+
+
 async def test_list_items_requires_authentication(client: httpx.AsyncClient) -> None:
     response = await client.get(f"/v1/tenders/{uuid.uuid4()}/items")
     assert response.status_code == 401
